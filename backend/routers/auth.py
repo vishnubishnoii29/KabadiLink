@@ -12,6 +12,7 @@ from backend.auth import (
     get_current_user
 )
 from backend.helpers import audit
+from backend.services import users as users_service
 
 logger = logging.getLogger("kabadilink.routers.auth")
 router = APIRouter(prefix="/auth", tags=["Authentication"])
@@ -163,8 +164,9 @@ def verify_otp(payload: OTPVerifyRequest):
 
 @router.get("/me")
 def get_me(current_user: dict = Depends(get_current_user)):
-    """Returns the authenticated user profile."""
-    return current_user
+    """Returns the authenticated user profile, plus collector_id/recycler_id if applicable."""
+    with get_db_connection() as conn:
+        return users_service.attach_role_scoped_id(conn, dict(current_user))
 
 @router.post("/logout")
 def logout():

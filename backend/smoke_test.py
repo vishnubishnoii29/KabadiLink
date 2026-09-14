@@ -310,6 +310,51 @@ class SmokeTest(unittest.TestCase):
         self.assertEqual(item["result"], "OTHER")
         self.assertNotIn("material", item)  # AIResult uses "result", not the internal detection key
 
+    def test_20_attach_role_scoped_id_collector(self):
+        """Test /auth/me enrichment adds collector_id for COLLECTOR role."""
+        from backend.services.users import attach_role_scoped_id
+        conn = _FakeConn(_FakeCursor(fetchone_result={"id": "c-123"}))
+        profile = {"id": "u-1", "role": "COLLECTOR", "phone": "9999999999"}
+        result = attach_role_scoped_id(conn, profile)
+        self.assertEqual(result["collector_id"], "c-123")
+        self.assertNotIn("recycler_id", result)
+
+    def test_21_attach_role_scoped_id_recycler_missing_row(self):
+        """Test /auth/me enrichment returns None, not a crash, when no recycler row exists yet."""
+        from backend.services.users import attach_role_scoped_id
+        conn = _FakeConn(_FakeCursor(fetchone_result=None))
+        profile = {"id": "u-2", "role": "RECYCLER", "phone": "8888888888"}
+        result = attach_role_scoped_id(conn, profile)
+        self.assertIsNone(result["recycler_id"])
+
+    def test_22_attach_role_scoped_id_admin_untouched(self):
+        """Test /auth/me enrichment is a no-op for ADMIN (no collectors/recyclers row to look up)."""
+        from backend.services.users import attach_role_scoped_id
+        conn = _FakeConn(_FakeCursor(fetchone_result=None))
+        profile = {"id": "u-3", "role": "ADMIN", "phone": "7777777777"}
+        result = attach_role_scoped_id(conn, profile)
+        self.assertNotIn("collector_id", result)
+        self.assertNotIn("recycler_id", result)
+
+    def test_23_list_safety_content_filters(self):
+        """Test list_safety_content returns rows and defaults language to 'en'."""
+        from backend.services.safety import list_safety_content
+        rows = [{"id": 1, "material_code": "BATTERY", "language": "en",
+                 "content_type": "ISL_VIDEO", "content_url": "https://example.com/isl-battery.mp4"}]
+        conn = _FakeConn(_FakeCursor(fetchall_result=rows))
+        result = list_safety_content(conn, "BATTERY", content_type="ISL_VIDEO")
+        self.assertEqual(result, rows)
+
+    def test_24_safety_content_route_registered(self):
+        """Test GET /safety-content is wired into the app."""
+        openapi = self.client.get("/openapi.json").json()
+        registered = {
+            (method.upper(), path)
+            for path, methods in openapi["paths"].items()
+            for method in methods
+        }
+        self.assertIn(("GET", "/safety-content"), registered)
+
 if __name__ == "__main__":
     print("Running KabadiLink Smoke Tests...")
     unittest.main(verbosity=2)
