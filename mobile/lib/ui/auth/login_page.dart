@@ -16,6 +16,13 @@ class _LoginPageState extends State<LoginPage> {
   bool _loading = false;
   String? _error;
 
+  @override
+  void dispose() {
+    _phoneController.dispose();
+    _codeController.dispose();
+    super.dispose();
+  }
+
   Future<void> _requestOtp() async {
     setState(() {
       _loading = true;
