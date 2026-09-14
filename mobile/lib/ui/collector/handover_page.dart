@@ -1,17 +1,14 @@
 import 'package:flutter/material.dart';
-import 'package:uuid/uuid.dart';
-import '../../data/offline_db.dart';
+import '../../data/repository.dart';
 
 class HandoverOtpPage extends StatefulWidget {
   final String lotId;
   final String lotCode;
-  final String? serverOtp;
 
   const HandoverOtpPage({
     Key? key,
     required this.lotId,
     required this.lotCode,
-    this.serverOtp,
   }) : super(key: key);
 
   @override
@@ -21,50 +18,77 @@ class HandoverOtpPage extends StatefulWidget {
 class _HandoverOtpPageState extends State<HandoverOtpPage> {
   String _paymentMethod = 'CASH';
   double? _measuredWeightKg;
+  String? _serverOtp;
+  Map<String, dynamic>? _handover;
+  bool _online = true;
+  bool _loading = true;
 
-  void _stageOfflineHandover() async {
-    final clientUid = const Uuid().v4();
-    final payload = {
-      'lot_id': widget.lotId,
-      'status': 'READY_TO_VERIFY',
-      'payment_method': _paymentMethod,
-      'actual_weight_kg': _measuredWeightKg,
-      'staged_offline': true,
-      'client_uid': clientUid,
-    };
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
 
-    // Queue in pending_ops per Offline Handover Security spec
-    await OfflineDatabase.instance.queueOperation(
-      clientUid: clientUid,
-      opType: 'STAGE_OFFLINE_HANDOVER',
-      payloadJson: payload.toString(),
-    );
-
-    if (mounted) {
-      showDialog(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('Handover Staged Offline'),
-          content: const Text(
-            'Handover intent and scale weight staged locally as READY_TO_VERIFY. '
-            'Official server OTP verification will complete automatically once connectivity is restored.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(ctx);
-                Navigator.pop(context);
-              },
-              child: const Text('OK'),
-            ),
-          ],
-        ),
-      );
+  Future<void> _load() async {
+    setState(() => _loading = true);
+    final online = await Repository.instance.isOnline();
+    Map<String, dynamic>? handover;
+    if (online) {
+      try {
+        handover = await Repository.instance.getHandover(widget.lotId);
+      } catch (_) {
+        handover = null; // No handover row yet (no accepted offer) — page still renders.
+      }
     }
+    setState(() {
+      _online = online;
+      _handover = handover;
+      _loading = false;
+    });
+  }
+
+  Future<void> _generateOtp() async {
+    final code = await Repository.instance.generateHandoverOtp(widget.lotId);
+    setState(() => _serverOtp = code);
+  }
+
+  Future<void> _confirmPayment() async {
+    if (_measuredWeightKg == null) return;
+    await Repository.instance.recordPayment(widget.lotId, _measuredWeightKg!, _paymentMethod);
+    if (mounted) Navigator.pop(context);
+  }
+
+  Future<void> _stageOfflineHandover() async {
+    if (_measuredWeightKg == null) return;
+    await Repository.instance.queueOfflineHandover(widget.lotId, _measuredWeightKg!, _paymentMethod);
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Handover Staged Offline'),
+        content: const Text(
+          'Handover intent and scale weight staged locally as READY_TO_VERIFY. '
+          'Official server OTP verification will complete automatically once connectivity is restored.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              Navigator.pop(context);
+            },
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_loading) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+    final otpVerified = _handover?['otp_verified_at'] != null;
     return Scaffold(
       appBar: AppBar(
         title: Text('Handover: ${widget.lotCode}'),
@@ -75,6 +99,11 @@ class _HandoverOtpPageState extends State<HandoverOtpPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
+            if (!_online)
+              const Padding(
+                padding: EdgeInsets.only(bottom: 12),
+                child: Text('Offline — handover will stage locally.', style: TextStyle(color: Colors.orange)),
+              ),
             const Text(
               'Handover Verification Code',
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
@@ -88,10 +117,14 @@ class _HandoverOtpPageState extends State<HandoverOtpPage> {
                 border: Border.all(color: Colors.teal.shade300),
               ),
               child: Text(
-                widget.serverOtp ?? 'OFFLINE',
+                _serverOtp ?? (_online ? 'Tap Generate' : 'OFFLINE'),
                 style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w900, letterSpacing: 6),
               ),
             ),
+            if (_online && _serverOtp == null) ...[
+              const SizedBox(height: 12),
+              ElevatedButton(onPressed: _generateOtp, child: const Text('Generate OTP')),
+            ],
             const SizedBox(height: 24),
             const Text('Payment Method:'),
             Row(
@@ -127,8 +160,13 @@ class _HandoverOtpPageState extends State<HandoverOtpPage> {
                   backgroundColor: Colors.teal,
                   padding: const EdgeInsets.symmetric(vertical: 14),
                 ),
-                onPressed: _stageOfflineHandover,
-                child: const Text('Acknowledge Handover Intent', style: TextStyle(color: Colors.white, fontSize: 16)),
+                onPressed: _online ? (otpVerified ? _confirmPayment : null) : _stageOfflineHandover,
+                child: Text(
+                  _online
+                      ? (otpVerified ? 'Confirm Payment' : 'Waiting for OTP verification…')
+                      : 'Acknowledge Handover Intent',
+                  style: const TextStyle(color: Colors.white, fontSize: 16),
+                ),
               ),
             ),
           ],
