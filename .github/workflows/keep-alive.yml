@@ -1,0 +1,29 @@
+name: Keep backend warm and prevent DB auto-pause
+
+on:
+  schedule:
+    # Runs every 10 minutes to prevent Render cold starts
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping backend health endpoint (Render keep-alive)
+        run: |
+          URL="${{ secrets.BACKEND_URL }}"
+          if [ -n "$URL" ]; then
+            curl -sf "$URL/health" || echo "Health ping failed, non-fatal"
+          else
+            echo "BACKEND_URL secret not yet configured in GitHub repository. Skipping ping."
+          fi
+
+      - name: Ping database heartbeat (Supabase 7-day auto-pause prevention)
+        run: |
+          URL="${{ secrets.BACKEND_URL }}"
+          if [ -n "$URL" ]; then
+            curl -sf "$URL/health/db" || echo "DB heartbeat ping failed, non-fatal"
+          else
+            echo "BACKEND_URL secret not yet configured in GitHub repository. Skipping ping."
+          fi
