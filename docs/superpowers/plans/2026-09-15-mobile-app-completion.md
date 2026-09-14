@@ -279,6 +279,7 @@ The HTTP client every other mobile task depends on. Mirrors `web/src/api.js` met
 
 ```dart
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../core/config.dart';
@@ -291,6 +292,34 @@ class ApiException implements Exception {
 
   @override
   String toString() => message;
+}
+
+/// Decodes an HTTP response the same way `web/src/api.js`'s `request()` does:
+/// only a 204 short-circuits to null unconditionally; any other empty or
+/// unparseable body decodes to null and falls through to the status check,
+/// so a non-2xx response with an empty/malformed body still throws
+/// ApiException instead of being silently treated as success. Top-level
+/// (not a private method on ApiClient) so it's directly testable — Dart's
+/// per-library privacy means a test file in a different library can't
+/// reach a `_`-prefixed instance method via a `dynamic` cast.
+@visibleForTesting
+dynamic decodeApiResponse(http.Response res) {
+  if (res.statusCode == 204) return null;
+  dynamic data;
+  try {
+    data = res.body.isEmpty ? null : jsonDecode(res.body);
+  } catch (_) {
+    data = null;
+  }
+  if (res.statusCode < 200 || res.statusCode >= 300) {
+    final err = (data is Map) ? data['error'] : null;
+    throw ApiException(
+      res.statusCode,
+      (err is Map ? err['code'] as String? : null) ?? 'API_ERROR',
+      (err is Map ? err['message'] as String? : null) ?? (res.reasonPhrase ?? 'Request failed'),
+    );
+  }
+  return data;
 }
 
 class ApiClient {
@@ -333,19 +362,7 @@ class ApiClient {
     return h;
   }
 
-  dynamic _decode(http.Response res) {
-    if (res.statusCode == 204 || res.body.isEmpty) return null;
-    final data = jsonDecode(res.body);
-    if (res.statusCode < 200 || res.statusCode >= 300) {
-      final err = (data is Map) ? data['error'] : null;
-      throw ApiException(
-        res.statusCode,
-        (err is Map ? err['code'] as String? : null) ?? 'API_ERROR',
-        (err is Map ? err['message'] as String? : null) ?? (res.reasonPhrase ?? 'Request failed'),
-      );
-    }
-    return data;
-  }
+  dynamic _decode(http.Response res) => decodeApiResponse(res);
 
   Future<dynamic> get(String path, {Map<String, dynamic>? query}) async {
     final res = await http.get(_uri(path, query), headers: _headers()).timeout(const Duration(seconds: 15));
@@ -461,15 +478,14 @@ import 'package:http/http.dart' as http;
 import 'package:kabadilink_mobile/data/api_client.dart';
 
 void main() {
-  group('ApiClient._decode via public error path', () {
+  group('decodeApiResponse', () {
     test('non-2xx response throws ApiException with server-provided code/message', () {
-      final client = ApiClient.instance;
       final res = http.Response(
         '{"error": {"code": "LOT_NOT_FOUND", "message": "Lot not found"}}',
         404,
       );
       expect(
-        () => (client as dynamic)._decode(res),
+        () => decodeApiResponse(res),
         throwsA(isA<ApiException>()
             .having((e) => e.status, 'status', 404)
             .having((e) => e.code, 'code', 'LOT_NOT_FOUND')),
@@ -477,9 +493,18 @@ void main() {
     });
 
     test('204 response decodes to null', () {
-      final client = ApiClient.instance;
       final res = http.Response('', 204);
-      expect((client as dynamic)._decode(res), isNull);
+      expect(decodeApiResponse(res), isNull);
+    });
+
+    test('non-2xx response with an empty body still throws, not silently null', () {
+      final res = http.Response('', 500);
+      expect(() => decodeApiResponse(res), throwsA(isA<ApiException>().having((e) => e.status, 'status', 500)));
+    });
+
+    test('non-2xx response with a malformed (non-JSON) body throws ApiException, not FormatException', () {
+      final res = http.Response('<html>Bad Gateway</html>', 502);
+      expect(() => decodeApiResponse(res), throwsA(isA<ApiException>().having((e) => e.status, 'status', 502)));
     });
   });
 }
@@ -489,7 +514,7 @@ void main() {
 
 Run: `cd mobile && flutter pub get && flutter test test/data/api_client_test.dart`
 
-Expected: PASS. If `_decode` being private (`_`-prefixed) blocks the `dynamic` cast trick above under your Dart version, move `_decode` to a top-level `@visibleForTesting` function instead and re-run — report back which you needed so later tasks match.
+Expected: PASS, all 4 cases.
 
 - [ ] **Step 4: Commit**
 
@@ -657,8 +682,11 @@ class Repository {
       if (opType != 'CREATE_LOT' && opType != 'STAGE_OFFLINE_HANDOVER') {
         continue; // Unrecognized op from a different build; leave PENDING for manual review.
       }
-      final payload = jsonDecode(op['payload_json'] as String) as Map<String, dynamic>;
       try {
+        // Decode inside the try: a malformed payload_json (should never happen —
+        // both queue methods write via jsonEncode — but if it ever did) must fail
+        // just this one op, not abort the loop for every later PENDING row.
+        final payload = jsonDecode(op['payload_json'] as String) as Map<String, dynamic>;
         if (opType == 'CREATE_LOT') {
           await _api.createLotManual(payload);
         } else {
@@ -818,6 +846,13 @@ class _LoginPageState extends State<LoginPage> {
   bool _otpSent = false;
   bool _loading = false;
   String? _error;
+
+  @override
+  void dispose() {
+    _phoneController.dispose();
+    _codeController.dispose();
+    super.dispose();
+  }
 
   Future<void> _requestOtp() async {
     setState(() {
@@ -1426,7 +1461,7 @@ Per `05-mobile-app.md`'s `lots_page.dart` section: offers list with Accept/Rejec
 - Create: `mobile/lib/ui/collector/lots_page.dart`
 
 **Interfaces:**
-- Consumes: `Repository.instance.getMyLots()`, `.getLot()`, `.getOffers()`, `.acceptOffer()`, `.rejectOffer()`, `.counterOffer()`, `.getHandover()`, `.createDispute()` (Task 3).
+- Consumes: `Repository.instance.getMyLots()`, `.getLot()`, `.getOffers()`, `.acceptOffer()`, `.rejectOffer()`, `.counterOffer()`, `.getHandover()`, `.createDispute()` (Task 3); `HandoverOtpPage({required lotId, required lotCode})` (Task 8 — depends on Task 8 landing first if run out of order; the offer's `anomaly` field is `{status, reason, severity}` per `backend/services/anomaly.py::evaluate_anomaly`, not a boolean flag).
 - Produces: `LotsPage` (const constructor, no args) — used by Task 6's bottom nav.
 
 - [ ] **Step 1: Write `mobile/lib/ui/collector/lots_page.dart`**
@@ -1434,6 +1469,7 @@ Per `05-mobile-app.md`'s `lots_page.dart` section: offers list with Accept/Rejec
 ```dart
 import 'package:flutter/material.dart';
 import '../../data/repository.dart';
+import 'handover_page.dart';
 
 class LotsPage extends StatefulWidget {
   const LotsPage({Key? key}) : super(key: key);
@@ -1653,6 +1689,23 @@ class _LotDetailPageState extends State<LotDetailPage> {
               Text('Pickup: ${_handover!['status']}'),
             ],
             const SizedBox(height: 16),
+            if (status == 'ACCEPTED' || status == 'HANDOVER_PENDING')
+              Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: ElevatedButton.icon(
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => HandoverOtpPage(
+                        lotId: widget.lotId,
+                        lotCode: _lot!['lot_code']?.toString() ?? widget.lotId,
+                      ),
+                    ),
+                  ).then((_) => _load()),
+                  icon: const Icon(Icons.handshake_outlined),
+                  label: const Text('Proceed to Handover'),
+                ),
+              ),
             const Text('Offers', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             if (_offers.isEmpty) const Text('No offers yet.'),
             ..._offers.map((o) {
@@ -1666,8 +1719,11 @@ class _LotDetailPageState extends State<LotDetailPage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text('₹${offer['price']} — $offerStatus'),
-                      if (offer['anomaly_flag'] == true)
-                        const Text('⚠ Flagged as unusual price', style: TextStyle(color: Colors.orange)),
+                      if ((offer['anomaly'] as Map?)?['status'] == 'ANOMALOUS')
+                        Text(
+                          '⚠ ${(offer['anomaly'] as Map)['reason'] ?? 'Flagged as an unusual price'}',
+                          style: const TextStyle(color: Colors.orange),
+                        ),
                       if (offerStatus == 'PENDING') ...[
                         const SizedBox(height: 8),
                         Wrap(
