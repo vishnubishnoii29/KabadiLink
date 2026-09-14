@@ -16,7 +16,11 @@ def get_safety_content(
     material_code: str,
     content_type: Optional[str] = None,
     language: str = "en",
+    limit: int = 50,
+    offset: int = 0,
     current_user: dict = Depends(get_current_user),
 ):
     with get_db_connection() as conn:
-        return safety_service.list_safety_content(conn, material_code, content_type, language)
+        return safety_service.list_safety_content(
+            conn, material_code, content_type, language, limit, offset
+        )

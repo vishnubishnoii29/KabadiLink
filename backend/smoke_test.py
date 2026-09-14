@@ -355,6 +355,16 @@ class SmokeTest(unittest.TestCase):
         }
         self.assertIn(("GET", "/safety-content"), registered)
 
+    def test_25_list_safety_content_accepts_pagination(self):
+        """Test list_safety_content threads limit/offset through without error (02-backend-api.md's
+        cross-cutting list-endpoint pagination convention: default limit 50)."""
+        from backend.services.safety import list_safety_content
+        rows = [{"id": 1, "material_code": "BATTERY", "language": "en",
+                 "content_type": "ISL_VIDEO", "content_url": "https://example.com/isl-battery.mp4"}]
+        conn = _FakeConn(_FakeCursor(fetchall_result=rows))
+        result = list_safety_content(conn, "BATTERY", limit=10, offset=20)
+        self.assertEqual(result, rows)
+
 if __name__ == "__main__":
     print("Running KabadiLink Smoke Tests...")
     unittest.main(verbosity=2)

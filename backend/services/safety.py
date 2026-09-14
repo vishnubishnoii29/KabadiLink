@@ -9,17 +9,21 @@ def list_safety_content(
     material_code: str,
     content_type: Optional[str] = None,
     language: str = "en",
+    limit: int = 50,
+    offset: int = 0,
 ) -> List[Dict[str, Any]]:
     clauses = ["material_code = %s", "language = %s"]
     params: List[Any] = [material_code, language]
     if content_type:
         clauses.append("content_type = %s")
         params.append(content_type)
+    params.extend([limit, offset])
 
     with conn.cursor() as cur:
         cur.execute(
             f"SELECT id, material_code, language, content_type, content_url "
-            f"FROM safety_content WHERE {' AND '.join(clauses)} ORDER BY id;",
+            f"FROM safety_content WHERE {' AND '.join(clauses)} ORDER BY id "
+            f"LIMIT %s OFFSET %s;",
             params,
         )
         rows = cur.fetchall()
