@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../core/config.dart';
@@ -11,6 +12,26 @@ class ApiException implements Exception {
 
   @override
   String toString() => message;
+}
+
+@visibleForTesting
+dynamic decodeApiResponse(http.Response res) {
+  if (res.statusCode == 204) return null;
+  dynamic data;
+  try {
+    data = res.body.isEmpty ? null : jsonDecode(res.body);
+  } catch (_) {
+    data = null;
+  }
+  if (res.statusCode < 200 || res.statusCode >= 300) {
+    final err = (data is Map) ? data['error'] : null;
+    throw ApiException(
+      res.statusCode,
+      (err is Map ? err['code'] as String? : null) ?? 'API_ERROR',
+      (err is Map ? err['message'] as String? : null) ?? (res.reasonPhrase ?? 'Request failed'),
+    );
+  }
+  return data;
 }
 
 class ApiClient {
@@ -53,19 +74,7 @@ class ApiClient {
     return h;
   }
 
-  dynamic _decode(http.Response res) {
-    if (res.statusCode == 204 || res.body.isEmpty) return null;
-    final data = jsonDecode(res.body);
-    if (res.statusCode < 200 || res.statusCode >= 300) {
-      final err = (data is Map) ? data['error'] : null;
-      throw ApiException(
-        res.statusCode,
-        (err is Map ? err['code'] as String? : null) ?? 'API_ERROR',
-        (err is Map ? err['message'] as String? : null) ?? (res.reasonPhrase ?? 'Request failed'),
-      );
-    }
-    return data;
-  }
+  dynamic _decode(http.Response res) => decodeApiResponse(res);
 
   Future<dynamic> get(String path, {Map<String, dynamic>? query}) async {
     final res = await http.get(_uri(path, query), headers: _headers()).timeout(const Duration(seconds: 15));
