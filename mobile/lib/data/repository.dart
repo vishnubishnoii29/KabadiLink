@@ -141,8 +141,11 @@ class Repository {
       if (opType != 'CREATE_LOT' && opType != 'STAGE_OFFLINE_HANDOVER') {
         continue; // Unrecognized op from a different build; leave PENDING for manual review.
       }
-      final payload = jsonDecode(op['payload_json'] as String) as Map<String, dynamic>;
       try {
+        // Decode inside the try: a malformed payload_json (should never happen —
+        // both queue methods write via jsonEncode — but if it ever did) must fail
+        // just this one op, not abort the loop for every later PENDING row.
+        final payload = jsonDecode(op['payload_json'] as String) as Map<String, dynamic>;
         if (opType == 'CREATE_LOT') {
           await _api.createLotManual(payload);
         } else {
