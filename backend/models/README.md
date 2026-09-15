@@ -14,6 +14,30 @@ Until both files are present, `backend/inference.py`'s `detect_and_classify()` r
 `backend/services/classification.py` falls back to a rule_based whole-image placeholder — the
 `/ai/classify-material` and `/lots/photo` endpoints stay fully functional either way.
 
+## Stage 2 classifier: training in progress
+
+`scripts/prepare_material_dataset.py` consolidates the raw Kaggle downloads under `dataset/`
+into `dataset/material_dataset/{train,val,test}/<class>/`, and `scripts/train_stage2_classifier.py`
+fine-tunes MobileNetV2 on it, producing `stage2_classifier.onnx` here plus
+`stage2_classifier_labels.json` (the class-index order — do not assume it matches
+`MATERIAL_CLASSES`' full order or length, see below).
+
+**Framework deviation**: trained in **PyTorch** (torchvision's MobileNetV2), not
+TensorFlow/Keras as `03-ai-ml-pipeline.md` specifies. TensorFlow dropped native Windows GPU
+support after v2.10 (needs WSL2); PyTorch has first-class native Windows CUDA support and was
+the pragmatic choice for training on a local RTX 3050. Export to ONNX is unaffected either way.
+TFLite export for the offline Flutter app is deferred as a follow-up (PyTorch has no direct
+TFLite path — likely ONNX → TensorFlow → TFLite via a separate conversion pass).
+
+**Class scope**: trained on 7 of the 9 `MATERIAL_CLASSES` — `PCB, CABLE, BATTERY, LCD, CRT,
+PLASTIC, OTHER`. **MOTOR and MAGNET are known gaps for this pilot**: no usable source imagery
+existed for either (public e-waste/electronics datasets only show whole-appliance photos, not
+motor/magnet closeups), and manual photography for both was intentionally deferred rather than
+block training. The model will never predict these two classes — a photo of an actual motor or
+magnet will be forced into whichever of the 7 trained classes looks closest, likely at low
+confidence, which correctly triggers the existing `needs_confirmation` UX path in
+`services/classification.py` rather than silently misreporting the material.
+
 Files placed here are git-ignored (see `.gitignore`) — they're large binaries that don't belong
 in version control; deploy them alongside the backend some other way (build artifact, object
 storage, Git LFS).

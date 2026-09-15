@@ -34,6 +34,12 @@ uploads/
 backend/models/*.onnx
 backend/models/*.tflite
 
+# Raw/derived ML training images (large binaries — see 03-ai-ml-pipeline.md)
+dataset/*.zip
+dataset/data/
+dataset/dataset_pc_parts/
+dataset/material_dataset/
+
 # Node / React
 node_modules/
 npm-debug.log*
