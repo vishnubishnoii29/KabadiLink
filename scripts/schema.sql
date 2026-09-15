@@ -110,6 +110,10 @@ CREATE TABLE IF NOT EXISTS lots (
     status VARCHAR(30) NOT NULL DEFAULT 'OPEN' CHECK (status IN ('DRAFT', 'OPEN', 'OFFERED', 'ACCEPTED', 'HANDOVER_PENDING', 'COMPLETED', 'DISPUTED', 'CANCELLED')),
     latitude DOUBLE PRECISION,
     longitude DOUBLE PRECISION,
+    -- Client-generated idempotency key for the mobile offline outbox: a resubmitted
+    -- CREATE_LOT op (response lost after a successful POST) returns the existing lot
+    -- instead of inserting a duplicate.
+    client_uid TEXT UNIQUE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 

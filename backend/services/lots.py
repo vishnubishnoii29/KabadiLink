@@ -86,22 +86,31 @@ def _insert_lot(
     lon: Optional[float],
     acting_user_id: Optional[str],
     ai_source: Optional[str] = None,
+    client_uid: Optional[str] = None,
 ) -> Dict[str, Any]:
     lot_code = next_lot_id(conn)
+    columns = [
+        "lot_code", "collector_id", "material_id", "lot_photo_id", "lot_group_id",
+        "weight_kg", "condition", "photo_url", "status", "latitude", "longitude",
+    ]
+    values = [
+        lot_code, collector_id, material_id, lot_photo_id, lot_group_id,
+        weight_kg, condition, photo_url, lat, lon,
+    ]
+    placeholders = ["%s", "%s", "%s", "%s", "%s", "%s", "%s", "%s", "'OPEN'", "%s", "%s"]
+    if client_uid is not None:
+        columns.append("client_uid")
+        placeholders.append("%s")
+        values.append(client_uid)
+
     with conn.cursor() as cur:
         cur.execute(
-            """
-            INSERT INTO lots (
-                lot_code, collector_id, material_id, lot_photo_id, lot_group_id,
-                weight_kg, condition, photo_url, status, latitude, longitude
-            )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'OPEN', %s, %s)
+            f"""
+            INSERT INTO lots ({", ".join(columns)})
+            VALUES ({", ".join(placeholders)})
             RETURNING *;
             """,
-            (
-                lot_code, collector_id, material_id, lot_photo_id, lot_group_id,
-                weight_kg, condition, photo_url, lat, lon,
-            ),
+            tuple(values),
         )
         row = cur.fetchone()
     audit(conn, acting_user_id, "LOT_CREATED", "lots", str(row["id"]), ai_source=ai_source, metadata={"lot_code": lot_code})
@@ -171,9 +180,23 @@ def create_lot_manual(
     photo_url: Optional[str],
     lat: Optional[float],
     lon: Optional[float],
+    client_uid: Optional[str] = None,
 ) -> Dict[str, Any]:
+    # Idempotency for the mobile offline outbox: if the client already submitted this
+    # client_uid (and only the response was lost), return that lot instead of inserting
+    # a duplicate. The UNIQUE constraint on lots.client_uid is the hard backstop.
+    if client_uid:
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM lots WHERE client_uid = %s;", (client_uid,))
+            existing = cur.fetchone()
+        if existing:
+            return dict(existing)
+
     material_id = _material_id_for_code(conn, material_code)
-    return _insert_lot(conn, collector_id, material_id, None, None, weight_kg, condition, photo_url, lat, lon, acting_user_id)
+    return _insert_lot(
+        conn, collector_id, material_id, None, None, weight_kg, condition, photo_url, lat, lon,
+        acting_user_id, client_uid=client_uid,
+    )
 
 
 def list_lots(

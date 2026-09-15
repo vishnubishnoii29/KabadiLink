@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_tts/flutter_tts.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../../data/repository.dart';
 
 class SafetyGuidePage extends StatefulWidget {
   final String materialCode;
@@ -13,6 +15,8 @@ class SafetyGuidePage extends StatefulWidget {
 class _SafetyGuidePageState extends State<SafetyGuidePage> {
   final FlutterTts _tts = FlutterTts();
   bool _isPlayingTts = false;
+  String? _islVideoUrl;
+  bool _loadingIsl = true;
 
   final Map<String, String> _safetyAlerts = {
     'BATTERY': 'WARNING: Risk of thermal runaway and chemical burns. Do not puncture, crush, or expose to heat. Store in non-conductive sand or insulated container.',
@@ -25,6 +29,29 @@ class _SafetyGuidePageState extends State<SafetyGuidePage> {
   void initState() {
     super.initState();
     _initTts();
+    _loadIslVideo();
+  }
+
+  Future<void> _loadIslVideo() async {
+    try {
+      final results = await Repository.instance.getSafetyContent(widget.materialCode, contentType: 'ISL_VIDEO');
+      if (results.isNotEmpty) {
+        setState(() => _islVideoUrl = (results.first as Map)['content_url'] as String?);
+      }
+    } catch (_) {
+      // No connectivity or no content configured yet — the placeholder card below covers this.
+    } finally {
+      setState(() => _loadingIsl = false);
+    }
+  }
+
+  Future<void> _openIslVideo() async {
+    final url = _islVideoUrl;
+    if (url == null) return;
+    final uri = Uri.parse(url);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
   }
 
   void _initTts() async {
@@ -57,12 +84,9 @@ class _SafetyGuidePageState extends State<SafetyGuidePage> {
     final alertText = _safetyAlerts[widget.materialCode] ??
         'Handle e-waste with puncture-resistant gloves and proper eye protection.';
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('Safety Guidance: ${widget.materialCode}'),
-        backgroundColor: Colors.deepOrange,
-      ),
-      body: SingleChildScrollView(
+    // This is a tab of CollectorHomeScreen's bottom nav, which already supplies the
+    // Scaffold and AppBar — returning the scroll view bare avoids a second stacked app bar.
+    return SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -106,37 +130,49 @@ class _SafetyGuidePageState extends State<SafetyGuidePage> {
             ),
             const SizedBox(height: 20),
 
-            // Tier 2 #10 ISL Video Guidance Placeholder
+            // Indian Sign Language (ISL) video guidance — one-directional playback only,
+            // sourced from safety_content where content_type = ISL_VIDEO. No sign
+            // *recognition* is attempted (05-mobile-app.md explicitly excludes it).
             const Text(
-              'Indian Sign Language (ISL) Video Demo',
+              'Indian Sign Language (ISL) Video Guidance',
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
-            Container(
-              height: 200,
-              width: double.infinity,
-              decoration: BoxDecoration(
-                color: Colors.black87,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.play_circle_fill, size: 54, color: Colors.white70),
-                    SizedBox(height: 8),
-                    Text(
-                      'ISL Demonstration: Safe Handling\n(Playing from safety_content repository)',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.white70, fontSize: 12),
-                    ),
-                  ],
+            InkWell(
+              onTap: _islVideoUrl != null ? _openIslVideo : null,
+              child: Container(
+                height: 200,
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  color: Colors.black87,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Center(
+                  child: _loadingIsl
+                      ? const CircularProgressIndicator(color: Colors.white70)
+                      : Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              _islVideoUrl != null ? Icons.play_circle_fill : Icons.videocam_off,
+                              size: 54,
+                              color: Colors.white70,
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              _islVideoUrl != null
+                                  ? 'Tap to play ISL demonstration'
+                                  : 'No ISL video available for ${widget.materialCode} yet',
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(color: Colors.white70, fontSize: 12),
+                            ),
+                          ],
+                        ),
                 ),
               ),
             ),
           ],
         ),
-      ),
     );
   }
 }

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:uuid/uuid.dart';
-import '../../data/offline_db.dart';
+import '../../data/repository.dart';
 
 class SellWizardPage extends StatefulWidget {
   const SellWizardPage({Key? key}) : super(key: key);
@@ -17,58 +16,58 @@ class _SellWizardPageState extends State<SellWizardPage> {
   bool _isResaleCandidate = false;
   double _scrapEstimate = 450.0;
   double _resaleEstimate = 1200.0;
+  bool _submitting = false;
 
   final List<String> _materials = [
     'PCB', 'BATTERY', 'CABLE', 'LCD', 'CRT', 'MOTOR', 'MAGNET', 'PLASTIC', 'OTHER'
   ];
 
-  void _saveLotOffline() async {
-    final clientUid = const Uuid().v4();
+  Future<void> _submitLot() async {
+    setState(() => _submitting = true);
     final payload = {
       'material_code': _selectedMaterial,
       'weight_kg': _manualWeightKg,
       'condition': _condition,
-      'client_uid': clientUid,
     };
 
-    await OfflineDatabase.instance.queueOperation(
-      clientUid: clientUid,
-      opType: 'CREATE_LOT',
-      payloadJson: payload.toString(),
-    );
+    // Always queue through the outbox first — this keeps CREATE_LOT on one
+    // code path whether the device is online or not, and the repository's
+    // sync engine drains it immediately if a connection is available.
+    await Repository.instance.queueCreateLot(payload);
+    final result = await Repository.instance.syncPendingOps();
 
     if (mounted) {
+      setState(() => _submitting = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Lot queued offline in pending_ops! Will sync when online.')),
+        SnackBar(
+          content: Text(result.synced > 0
+              ? 'Lot submitted and synced.'
+              : 'Lot queued offline — will sync when online.'),
+        ),
       );
-      Navigator.pop(context);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Sell Scrap — Smart Wizard'),
-        backgroundColor: Colors.teal,
-      ),
-      body: Stepper(
-        currentStep: _currentStep,
-        onStepContinue: () {
-          if (_currentStep < 2) {
-            setState(() => _currentStep += 1);
-          } else {
-            _saveLotOffline();
-          }
-        },
-        onStepCancel: () {
-          if (_currentStep > 0) {
-            setState(() => _currentStep -= 1);
-          } else {
-            Navigator.pop(context);
-          }
-        },
-        steps: [
+    // This is tab 0 of CollectorHomeScreen's bottom nav, which already supplies the
+    // Scaffold and AppBar — returning the Stepper bare avoids a second stacked app bar.
+    return Stepper(
+      currentStep: _currentStep,
+      onStepContinue: () {
+        if (_currentStep < 2) {
+          setState(() => _currentStep += 1);
+        } else if (!_submitting) {
+          _submitLot();
+        }
+      },
+      onStepCancel: () {
+        if (_currentStep > 0) {
+          setState(() => _currentStep -= 1);
+        }
+        // At step 0 there is nothing beneath this root tab to pop to — do nothing.
+      },
+      steps: [
           // Step 1: On-Device Detection & Confirmation
           Step(
             title: const Text('AI Material Verification'),
@@ -142,8 +141,7 @@ class _SellWizardPageState extends State<SellWizardPage> {
               ],
             ),
           ),
-        ],
-      ),
+      ],
     );
   }
 }

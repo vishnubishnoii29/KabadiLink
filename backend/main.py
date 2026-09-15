@@ -10,7 +10,7 @@ from backend.config import settings
 from backend.db import init_db_pool, close_db_pool
 from backend.routers import (
     health, auth, lots, offers, recyclers, handover, disputes,
-    notifications, epr, admin, uploads, whatsapp, ai,
+    notifications, epr, admin, uploads, whatsapp, ai, safety,
 )
 
 # Configure logging
@@ -87,6 +87,7 @@ app.include_router(admin.router)
 app.include_router(uploads.router)
 app.include_router(whatsapp.router)
 app.include_router(ai.router)
+app.include_router(safety.router)
 
 # Local object storage fallback (used whenever SUPABASE_URL/SUPABASE_KEY aren't configured).
 os.makedirs(settings.LOCAL_UPLOAD_DIR, exist_ok=True)
