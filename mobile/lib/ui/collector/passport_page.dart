@@ -11,6 +11,7 @@ class PassportPage extends StatefulWidget {
 class _PassportPageState extends State<PassportPage> {
   List<dynamic> _lots = [];
   bool _loading = true;
+  String? _error;
 
   @override
   void initState() {
@@ -19,17 +20,35 @@ class _PassportPageState extends State<PassportPage> {
   }
 
   Future<void> _load() async {
-    setState(() => _loading = true);
-    final lots = await Repository.instance.getMyLots();
     setState(() {
-      _lots = lots;
-      _loading = false;
+      _loading = true;
+      _error = null;
     });
+    try {
+      final lots = await Repository.instance.getMyLots();
+      setState(() => _lots = lots);
+    } catch (e) {
+      setState(() => _error = e.toString());
+    } finally {
+      setState(() => _loading = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     if (_loading) return const Center(child: CircularProgressIndicator());
+    if (_error != null) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('Could not load Scrap Passport: $_error'),
+            const SizedBox(height: 8),
+            ElevatedButton(onPressed: _load, child: const Text('Retry')),
+          ],
+        ),
+      );
+    }
     if (_lots.isEmpty) return const Center(child: Text('No Scrap Passport entries yet.'));
     return RefreshIndicator(
       onRefresh: _load,
@@ -65,6 +84,7 @@ class _PassportDetailPageState extends State<PassportDetailPage> {
   bool _loading = true;
   bool _loadingEpr = false;
   String? _eprError;
+  String? _error;
 
   @override
   void initState() {
@@ -73,12 +93,18 @@ class _PassportDetailPageState extends State<PassportDetailPage> {
   }
 
   Future<void> _load() async {
-    setState(() => _loading = true);
-    final passport = await Repository.instance.getPassport(widget.lotId);
     setState(() {
-      _passport = passport;
-      _loading = false;
+      _loading = true;
+      _error = null;
     });
+    try {
+      final passport = await Repository.instance.getPassport(widget.lotId);
+      setState(() => _passport = passport);
+    } catch (e) {
+      setState(() => _error = e.toString());
+    } finally {
+      setState(() => _loading = false);
+    }
   }
 
   Future<void> _viewEprRecord() async {
@@ -106,8 +132,23 @@ class _PassportDetailPageState extends State<PassportDetailPage> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loading || _passport == null) {
+    if (_loading) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+    if (_error != null || _passport == null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Passport'), backgroundColor: Colors.teal),
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Could not load passport: ${_error ?? 'not found'}'),
+              const SizedBox(height: 8),
+              ElevatedButton(onPressed: _load, child: const Text('Retry')),
+            ],
+          ),
+        ),
+      );
     }
     final lot = _passport!['lot'] as Map<String, dynamic>;
     final handover = _passport!['handover'] as Map<String, dynamic>?;
@@ -130,7 +171,7 @@ class _PassportDetailPageState extends State<PassportDetailPage> {
             Text('Pickup status: ${handover['status']}', style: const TextStyle(fontWeight: FontWeight.bold)),
           if (payment != null) ...[
             const SizedBox(height: 8),
-            Text('Paid ₹${payment['amount']} via ${payment['method']}'),
+            Text('Paid ₹${payment['amount']} via ${payment['payment_method']}'),
           ],
           const SizedBox(height: 24),
           if (handover != null && handover['status'] == 'COMPLETED' && payment != null)

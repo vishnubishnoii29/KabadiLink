@@ -54,6 +54,9 @@ class ManualLotRequest(BaseModel):
     photo_url: Optional[str] = None
     lat: Optional[float] = None
     lon: Optional[float] = None
+    # Idempotency key from the mobile offline outbox — resubmitting the same
+    # client_uid returns the already-created lot instead of a duplicate.
+    client_uid: Optional[str] = None
 
 
 class UpdateLotRequest(BaseModel):
@@ -105,6 +108,7 @@ def create_lot_manual(payload: ManualLotRequest, current_user: dict = Depends(ge
         lot = lots_service.create_lot_manual(
             conn, collector_id, current_user["id"], payload.material_code, payload.weight_kg,
             payload.condition, payload.photo_url, payload.lat, payload.lon,
+            client_uid=payload.client_uid,
         )
     return lot
 

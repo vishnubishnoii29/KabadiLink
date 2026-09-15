@@ -45,34 +45,29 @@ class _SellWizardPageState extends State<SellWizardPage> {
               : 'Lot queued offline — will sync when online.'),
         ),
       );
-      Navigator.pop(context);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Sell Scrap — Smart Wizard'),
-        backgroundColor: Colors.teal,
-      ),
-      body: Stepper(
-        currentStep: _currentStep,
-        onStepContinue: () {
-          if (_currentStep < 2) {
-            setState(() => _currentStep += 1);
-          } else if (!_submitting) {
-            _submitLot();
-          }
-        },
-        onStepCancel: () {
-          if (_currentStep > 0) {
-            setState(() => _currentStep -= 1);
-          } else {
-            Navigator.pop(context);
-          }
-        },
-        steps: [
+    // This is tab 0 of CollectorHomeScreen's bottom nav, which already supplies the
+    // Scaffold and AppBar — returning the Stepper bare avoids a second stacked app bar.
+    return Stepper(
+      currentStep: _currentStep,
+      onStepContinue: () {
+        if (_currentStep < 2) {
+          setState(() => _currentStep += 1);
+        } else if (!_submitting) {
+          _submitLot();
+        }
+      },
+      onStepCancel: () {
+        if (_currentStep > 0) {
+          setState(() => _currentStep -= 1);
+        }
+        // At step 0 there is nothing beneath this root tab to pop to — do nothing.
+      },
+      steps: [
           // Step 1: On-Device Detection & Confirmation
           Step(
             title: const Text('AI Material Verification'),
@@ -146,8 +141,7 @@ class _SellWizardPageState extends State<SellWizardPage> {
               ],
             ),
           ),
-        ],
-      ),
+      ],
     );
   }
 }

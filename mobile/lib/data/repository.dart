@@ -157,6 +157,7 @@ class Repository {
         await _db.markOperationCompleted(op['id'] as int);
         synced++;
       } catch (_) {
+        await _db.markOperationFailed(op['id'] as int);
         failed++; // Left PENDING; retried next time syncPendingOps() runs.
       }
     }

@@ -94,6 +94,7 @@ class _LotDetailPageState extends State<LotDetailPage> {
   List<dynamic> _offers = [];
   Map<String, dynamic>? _handover;
   bool _loading = true;
+  String? _error;
 
   @override
   void initState() {
@@ -102,21 +103,29 @@ class _LotDetailPageState extends State<LotDetailPage> {
   }
 
   Future<void> _load() async {
-    setState(() => _loading = true);
-    final lot = await Repository.instance.getLot(widget.lotId);
-    final offers = await Repository.instance.getOffers(widget.lotId);
-    Map<String, dynamic>? handover;
-    try {
-      handover = await Repository.instance.getHandover(widget.lotId);
-    } catch (_) {
-      handover = null; // No handover yet — no offer accepted.
-    }
     setState(() {
-      _lot = lot;
-      _offers = offers;
-      _handover = handover;
-      _loading = false;
+      _loading = true;
+      _error = null;
     });
+    try {
+      final lot = await Repository.instance.getLot(widget.lotId);
+      final offers = await Repository.instance.getOffers(widget.lotId);
+      Map<String, dynamic>? handover;
+      try {
+        handover = await Repository.instance.getHandover(widget.lotId);
+      } catch (_) {
+        handover = null; // No handover yet — no offer accepted.
+      }
+      setState(() {
+        _lot = lot;
+        _offers = offers;
+        _handover = handover;
+      });
+    } catch (e) {
+      setState(() => _error = e.toString());
+    } finally {
+      setState(() => _loading = false);
+    }
   }
 
   Future<void> _accept(String offerId) async {
@@ -171,9 +180,9 @@ class _LotDetailPageState extends State<LotDetailPage> {
                 isExpanded: true,
                 items: const [
                   DropdownMenuItem(value: 'WEIGHT_MISMATCH', child: Text('Weight mismatch')),
-                  DropdownMenuItem(value: 'PRICE_DISPUTE', child: Text('Price dispute')),
-                  DropdownMenuItem(value: 'NO_SHOW', child: Text('Recycler no-show')),
-                  DropdownMenuItem(value: 'OTHER', child: Text('Other')),
+                  DropdownMenuItem(value: 'PAYMENT_MISMATCH', child: Text('Payment mismatch')),
+                  DropdownMenuItem(value: 'DAMAGED', child: Text('Item damaged')),
+                  DropdownMenuItem(value: 'PICKUP_ISSUE', child: Text('Pickup issue')),
                 ],
                 onChanged: (val) => setDialogState(() => type = val ?? 'WEIGHT_MISMATCH'),
               ),
@@ -192,8 +201,16 @@ class _LotDetailPageState extends State<LotDetailPage> {
       ),
     );
     if (submitted == true) {
-      await Repository.instance.createDispute(widget.lotId, type, descController.text);
-      await _load();
+      try {
+        await Repository.instance.createDispute(widget.lotId, type, descController.text);
+        await _load();
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Could not submit dispute: $e')),
+          );
+        }
+      }
     }
   }
 
@@ -211,8 +228,23 @@ class _LotDetailPageState extends State<LotDetailPage> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loading || _lot == null) {
+    if (_loading) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+    if (_error != null || _lot == null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Lot'), backgroundColor: Colors.teal),
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Could not load lot: ${_error ?? 'not found'}'),
+              const SizedBox(height: 8),
+              ElevatedButton(onPressed: _load, child: const Text('Retry')),
+            ],
+          ),
+        ),
+      );
     }
     final status = _lot!['status']?.toString() ?? '';
     final canDispute = status == 'COMPLETED' || status == 'DISPUTED';

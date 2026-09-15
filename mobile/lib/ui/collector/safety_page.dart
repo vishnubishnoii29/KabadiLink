@@ -84,12 +84,9 @@ class _SafetyGuidePageState extends State<SafetyGuidePage> {
     final alertText = _safetyAlerts[widget.materialCode] ??
         'Handle e-waste with puncture-resistant gloves and proper eye protection.';
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('Safety Guidance: ${widget.materialCode}'),
-        backgroundColor: Colors.deepOrange,
-      ),
-      body: SingleChildScrollView(
+    // This is a tab of CollectorHomeScreen's bottom nav, which already supplies the
+    // Scaffold and AppBar — returning the scroll view bare avoids a second stacked app bar.
+    return SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -176,7 +173,6 @@ class _SafetyGuidePageState extends State<SafetyGuidePage> {
             ),
           ],
         ),
-      ),
     );
   }
 }

@@ -111,4 +111,9 @@ class OfflineDatabase {
       whereArgs: [id],
     );
   }
+
+  Future<void> markOperationFailed(int id) async {
+    final db = await instance.database;
+    await db.rawUpdate('UPDATE pending_ops SET retry_count = retry_count + 1 WHERE id = ?', [id]);
+  }
 }

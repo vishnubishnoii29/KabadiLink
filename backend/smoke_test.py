@@ -45,6 +45,42 @@ class _FakeCursor:
         return False
 
 
+class _ScriptedCursor:
+    """A cursor whose fetchone() answer depends on the SQL of the preceding execute().
+
+    `responses` is an ordered list of (sql_substring, row) rules — the first rule whose
+    substring appears in the executed statement wins, otherwise fetchone() returns None.
+    Needed for SELECT-then-maybe-INSERT flows (e.g. client_uid dedup) where a single
+    canned _FakeCursor result can't distinguish the two statements. Every executed
+    statement is recorded in .executed so tests can assert what did and did not run.
+    """
+
+    def __init__(self, responses=None):
+        self._responses = responses or []
+        self.executed = []
+        self._row = None
+
+    def execute(self, sql, params=None):
+        self.executed.append(sql)
+        self._row = None
+        for needle, row in self._responses:
+            if needle in sql:
+                self._row = row
+                break
+
+    def fetchall(self):
+        return []
+
+    def fetchone(self):
+        return self._row
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return False
+
+
 class _FakeConn:
     def __init__(self, cursor):
         self._cursor = cursor
@@ -129,6 +165,7 @@ class SmokeTest(unittest.TestCase):
         self.assertIn("lot_code TEXT UNIQUE NOT NULL", content)
         self.assertIn("hazard_flags TEXT[]", content)
         self.assertIn("CREATE TABLE IF NOT EXISTS transactions", content)
+        self.assertIn("client_uid TEXT UNIQUE", content)  # offline-outbox idempotency key on lots
         self.assertIn("CREATE TABLE IF NOT EXISTS epr_handover_records", content)
         self.assertIn("CREATE TABLE IF NOT EXISTS audit_log", content)
 
@@ -364,6 +401,70 @@ class SmokeTest(unittest.TestCase):
         conn = _FakeConn(_FakeCursor(fetchall_result=rows))
         result = list_safety_content(conn, "BATTERY", limit=10, offset=20)
         self.assertEqual(result, rows)
+
+    def test_26_create_lot_manual_dedups_on_repeat_client_uid(self):
+        """Test a resubmitted client_uid returns the existing lot without a second INSERT.
+
+        This is the server half of the mobile offline outbox's idempotency guarantee: if
+        POST /lots succeeded but the response was lost, the next sync must not create a
+        duplicate lot.
+        """
+        from backend.services.lots import create_lot_manual
+        existing = {"id": "lot-existing", "lot_code": "KL-LOT-000001", "client_uid": "uid-abc"}
+        cursor = _ScriptedCursor([("FROM lots WHERE client_uid", existing)])
+        conn = _FakeConn(cursor)
+
+        result = create_lot_manual(
+            conn, "collector-1", "user-1", "PCB", 4.2, "fair", None, None, None,
+            client_uid="uid-abc",
+        )
+
+        self.assertEqual(result, existing)
+        self.assertFalse(
+            any("INSERT INTO lots" in sql for sql in cursor.executed),
+            f"A duplicate lot was inserted for a repeated client_uid: {cursor.executed}",
+        )
+
+    def test_27_create_lot_manual_persists_new_client_uid(self):
+        """Test a first-time client_uid falls through to INSERT and stores the key."""
+        from backend.services.lots import create_lot_manual
+        inserted = {"id": "lot-new", "lot_code": "KL-LOT-000042", "client_uid": "uid-new"}
+        cursor = _ScriptedCursor([
+            ("FROM lots WHERE client_uid", None),  # not seen before
+            ("FROM materials", {"id": 3}),
+            ("nextval", {"val": 42}),
+            ("INSERT INTO lots", inserted),
+        ])
+        conn = _FakeConn(cursor)
+
+        result = create_lot_manual(
+            conn, "collector-1", "user-1", "PCB", 4.2, "fair", None, None, None,
+            client_uid="uid-new",
+        )
+
+        self.assertEqual(result["client_uid"], "uid-new")
+        insert_sql = next(sql for sql in cursor.executed if "INSERT INTO lots" in sql)
+        self.assertIn("client_uid", insert_sql)
+
+    def test_28_create_lot_manual_without_client_uid_unchanged(self):
+        """Test omitting client_uid keeps the pre-existing behaviour (backward compatible)."""
+        from backend.services.lots import create_lot_manual
+        inserted = {"id": "lot-plain", "lot_code": "KL-LOT-000043"}
+        cursor = _ScriptedCursor([
+            ("FROM materials", {"id": 3}),
+            ("nextval", {"val": 43}),
+            ("INSERT INTO lots", inserted),
+        ])
+        conn = _FakeConn(cursor)
+
+        result = create_lot_manual(conn, "collector-1", "user-1", "PCB", 4.2, "fair", None, None, None)
+
+        self.assertEqual(result, inserted)
+        # No dedup SELECT is issued, and client_uid is left out of the INSERT entirely.
+        self.assertFalse(any("WHERE client_uid" in sql for sql in cursor.executed))
+        insert_sql = next(sql for sql in cursor.executed if "INSERT INTO lots" in sql)
+        self.assertNotIn("client_uid", insert_sql)
+
 
 if __name__ == "__main__":
     print("Running KabadiLink Smoke Tests...")
