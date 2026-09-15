@@ -34,6 +34,19 @@ dynamic decodeApiResponse(http.Response res) {
   return data;
 }
 
+@visibleForTesting
+http.MultipartRequest buildClassifyMaterialRequest(
+  Uri uri,
+  String? token,
+  List<int> photoBytes,
+  String filename,
+) {
+  final request = http.MultipartRequest('POST', uri);
+  if (token != null) request.headers['Authorization'] = 'Bearer $token';
+  request.files.add(http.MultipartFile.fromBytes('photo', photoBytes, filename: filename));
+  return request;
+}
+
 class ApiClient {
   ApiClient._();
   static final ApiClient instance = ApiClient._();
@@ -177,4 +190,22 @@ class ApiClient {
         'material_code': materialCode,
         'content_type': contentType,
       })) as List<dynamic>;
+
+  // --- AI ---
+  Future<List<dynamic>> classifyMaterial({required List<int> photoBytes, String filename = 'photo.jpg'}) async {
+    final request = buildClassifyMaterialRequest(_uri('/ai/classify-material'), _token, photoBytes, filename);
+    final streamed = await request.send().timeout(const Duration(seconds: 20));
+    return _decode(await http.Response.fromStream(streamed)) as List<dynamic>;
+  }
+
+  Future<Map<String, dynamic>> getPriceEstimatePreview({
+    required String material,
+    required double weight,
+    String? condition,
+  }) async =>
+      (await get('/ai/estimate-price', query: {
+        'material': material,
+        'weight': weight,
+        'condition': condition,
+      })) as Map<String, dynamic>;
 }

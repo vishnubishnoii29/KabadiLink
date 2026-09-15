@@ -32,4 +32,38 @@ void main() {
       expect(() => decodeApiResponse(res), throwsA(isA<ApiException>().having((e) => e.status, 'status', 502)));
     });
   });
+
+  group('buildClassifyMaterialRequest', () {
+    test('builds a multipart POST with the photo field and auth header', () {
+      final uri = Uri.parse('http://example.com/ai/classify-material');
+      final request = buildClassifyMaterialRequest(uri, 'tok123', [1, 2, 3], 'photo.jpg');
+
+      expect(request.method, 'POST');
+      expect(request.url, uri);
+      expect(request.headers['Authorization'], 'Bearer tok123');
+      expect(request.files, hasLength(1));
+      expect(request.files.single.field, 'photo');
+      expect(request.files.single.filename, 'photo.jpg');
+    });
+
+    test('omits Authorization header when no token is set', () {
+      final request = buildClassifyMaterialRequest(Uri.parse('http://example.com/x'), null, [1], 'a.jpg');
+      expect(request.headers.containsKey('Authorization'), isFalse);
+    });
+  });
+
+  group('classify-material response decoding', () {
+    test('decodes a list of AIResult-shaped objects', () {
+      final res = http.Response(
+        '[{"result": "PCB", "confidence": 0.92, "reasoning": "matched shape", '
+        '"source": "local_model", "needs_confirmation": false}]',
+        200,
+      );
+      final decoded = decodeApiResponse(res) as List<dynamic>;
+      expect(decoded, hasLength(1));
+      final first = decoded.first as Map<String, dynamic>;
+      expect(first['result'], 'PCB');
+      expect(first['needs_confirmation'], false);
+    });
+  });
 }

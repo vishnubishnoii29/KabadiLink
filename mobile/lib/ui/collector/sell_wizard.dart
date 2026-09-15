@@ -1,5 +1,7 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import '../../data/repository.dart';
+import 'camera_capture_page.dart';
 
 class SellWizardPage extends StatefulWidget {
   const SellWizardPage({Key? key}) : super(key: key);
@@ -13,10 +15,15 @@ class _SellWizardPageState extends State<SellWizardPage> {
   String _selectedMaterial = 'PCB';
   double _manualWeightKg = 2.5;
   String _condition = 'fair';
-  bool _isResaleCandidate = false;
-  double _scrapEstimate = 450.0;
-  double _resaleEstimate = 1200.0;
   bool _submitting = false;
+
+  Map<String, dynamic>? _aiResult;
+  bool _classifying = false;
+  String? _classifyError;
+
+  Map<String, dynamic>? _priceEstimate;
+  bool _priceLoading = false;
+  String? _priceError;
 
   final List<String> _materials = [
     'PCB', 'BATTERY', 'CABLE', 'LCD', 'CRT', 'MOTOR', 'MAGNET', 'PLASTIC', 'OTHER'
@@ -48,6 +55,61 @@ class _SellWizardPageState extends State<SellWizardPage> {
     }
   }
 
+  Future<void> _takePhoto() async {
+    final bytes = await Navigator.push<Uint8List>(
+      context,
+      MaterialPageRoute(builder: (_) => const CameraCapturePage()),
+    );
+    if (bytes == null || !mounted) return; // user backed out of the camera screen
+    await _classifyPhoto(bytes);
+  }
+
+  Future<void> _classifyPhoto(Uint8List bytes) async {
+    setState(() {
+      _classifying = true;
+      _classifyError = null;
+    });
+    try {
+      final results = await Repository.instance.classifyMaterial(bytes);
+      if (results.isEmpty) {
+        if (mounted) setState(() => _classifyError = 'No material detected — please select manually.');
+        return;
+      }
+      final top = results.cast<Map<String, dynamic>>().reduce(
+          (a, b) => (a['confidence'] as num) >= (b['confidence'] as num) ? a : b);
+      if (mounted) {
+        setState(() {
+          _aiResult = top;
+          if (_materials.contains(top['result'])) _selectedMaterial = top['result'] as String;
+        });
+      }
+    } catch (_) {
+      // Offline, no camera support server-side, timeout, etc. — never block the wizard.
+      if (mounted) setState(() => _classifyError = 'Could not classify photo — please select the material manually.');
+    } finally {
+      if (mounted) setState(() => _classifying = false);
+    }
+  }
+
+  Future<void> _fetchPriceEstimate() async {
+    setState(() {
+      _priceLoading = true;
+      _priceError = null;
+    });
+    try {
+      final estimate = await Repository.instance.getPriceEstimatePreview(
+        material: _selectedMaterial,
+        weight: _manualWeightKg,
+        condition: _condition,
+      );
+      if (mounted) setState(() => _priceEstimate = estimate);
+    } catch (_) {
+      if (mounted) setState(() => _priceError = 'Could not fetch a price estimate right now.');
+    } finally {
+      if (mounted) setState(() => _priceLoading = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     // This is tab 0 of CollectorHomeScreen's bottom nav, which already supplies the
@@ -57,6 +119,7 @@ class _SellWizardPageState extends State<SellWizardPage> {
       onStepContinue: () {
         if (_currentStep < 2) {
           setState(() => _currentStep += 1);
+          if (_currentStep == 2) _fetchPriceEstimate();
         } else if (!_submitting) {
           _submitLot();
         }
@@ -76,23 +139,41 @@ class _SellWizardPageState extends State<SellWizardPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'On-device YOLOv8 & MobileNetV2 detected material:',
+                  'Take a photo for an AI-suggested material match, or choose manually below:',
                   style: TextStyle(fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  onPressed: _classifying ? null : _takePhoto,
+                  icon: const Icon(Icons.camera_alt_outlined),
+                  label: Text(_classifying ? 'Analyzing photo...' : 'Take Photo'),
+                ),
+                if (_classifying) const Padding(padding: EdgeInsets.only(top: 8), child: LinearProgressIndicator()),
+                if (_classifyError != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text(_classifyError!, style: const TextStyle(color: Colors.orange, fontSize: 12)),
+                  ),
+                if (_aiResult != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    'AI suggestion: ${_aiResult!['result']} '
+                    '(${(((_aiResult!['confidence'] as num?) ?? 0) * 100).toStringAsFixed(0)}% confidence)',
+                    style: const TextStyle(fontStyle: FontStyle.italic),
+                  ),
+                  if ((_aiResult!['reasoning'] as String?)?.isNotEmpty ?? false)
+                    Text(_aiResult!['reasoning'] as String, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                  if (_aiResult!['needs_confirmation'] == true)
+                    const Text('Low confidence — please confirm or correct the material below.',
+                        style: TextStyle(fontSize: 12, color: Colors.orange, fontWeight: FontWeight.bold)),
+                ],
+                const SizedBox(height: 12),
+                const Text('Material (edit if needed):'),
                 DropdownButton<String>(
                   value: _selectedMaterial,
                   isExpanded: true,
                   items: _materials.map((m) => DropdownMenuItem(value: m, child: Text(m))).toList(),
                   onChanged: (val) => setState(() => _selectedMaterial = val ?? 'PCB'),
-                ),
-                const SizedBox(height: 12),
-                // Tier 2 #8 Scrap or Sell Heuristic
-                CheckboxListTile(
-                  title: const Text('Item appears intact (Resale Candidate)'),
-                  subtitle: const Text('Compare component resale vs. material scrap value'),
-                  value: _isResaleCandidate,
-                  onChanged: (val) => setState(() => _isResaleCandidate = val ?? false),
                 ),
               ],
             ),
@@ -127,17 +208,26 @@ class _SellWizardPageState extends State<SellWizardPage> {
             content: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Estimated Scrap Value: ₹${_scrapEstimate.toStringAsFixed(0)}'),
-                if (_isResaleCandidate) ...[
+                if (_priceLoading)
+                  const Center(child: CircularProgressIndicator())
+                else if (_priceError != null) ...[
+                  Text(_priceError!, style: const TextStyle(color: Colors.red)),
+                  TextButton(onPressed: _fetchPriceEstimate, child: const Text('Retry')),
+                ] else if (_priceEstimate != null) ...[
+                  Text(
+                    'Estimated Scrap Value: ₹${_priceEstimate!['min']} – ₹${_priceEstimate!['max']} '
+                    '(median ₹${_priceEstimate!['median']})',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
                   const SizedBox(height: 6),
-                  Text('Estimated Resale Value: ₹${_resaleEstimate.toStringAsFixed(0)}',
-                      style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
-                ],
-                const SizedBox(height: 8),
-                const Text(
-                  'Explanation: Based on last 30-day verified industrial transactions in your zone.',
-                  style: TextStyle(fontSize: 12, color: Colors.grey),
-                ),
+                  Text('Confidence: ${_priceEstimate!['confidence']}'),
+                  const SizedBox(height: 8),
+                  Text(
+                    _priceEstimate!['explanation']?.toString() ?? '',
+                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                ] else
+                  const Text('Continue from the previous step to see a price estimate.'),
               ],
             ),
           ),

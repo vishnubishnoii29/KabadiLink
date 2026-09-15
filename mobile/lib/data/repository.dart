@@ -131,6 +131,12 @@ class Repository {
   Future<List<dynamic>> getSafetyContent(String materialCode, {String contentType = 'ISL_VIDEO'}) =>
       _api.getSafetyContent(materialCode: materialCode, contentType: contentType);
 
+  // --- AI ---
+  Future<List<dynamic>> classifyMaterial(List<int> photoBytes) => _api.classifyMaterial(photoBytes: photoBytes);
+
+  Future<Map<String, dynamic>> getPriceEstimatePreview({required String material, required double weight, String? condition}) =>
+      _api.getPriceEstimatePreview(material: material, weight: weight, condition: condition);
+
   // --- Sync engine: drains pending_ops to the backend, in FIFO order ---
   Future<SyncResult> syncPendingOps() async {
     if (!_api.isAuthenticated) return const SyncResult(0, 0);
