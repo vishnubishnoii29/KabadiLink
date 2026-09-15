@@ -139,6 +139,12 @@ export const api = {
     return request('/uploads/file', { method: 'POST', body: formData });
   },
 
+  // Safety
+  getSafetyContent: (params = {}) => {
+    const q = new URLSearchParams(params).toString();
+    return request(`/safety-content${q ? '?' + q : ''}`);
+  },
+
   // WhatsApp Simulation
   simulateWhatsApp: (phone, text) => request('/whatsapp/simulate', {
     method: 'POST',
