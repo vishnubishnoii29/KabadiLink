@@ -1,0 +1,178 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --bg: #F7F8F6;
+    --surface: #FFFFFF;
+    --ink-900: #17211D;
+    --ink-600: #617067;
+    --ink-400: #849188;
+    --border: #D9E1DB;
+    --accent-700: #244C3B;
+    --accent-050: #E8F3E9;
+    --accent-lime: #D7F06B;
+  }
+
+  html {
+    font-size: 16px;
+    line-height: 1.5;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: #F7F8F6;
+    color: #17211D;
+    font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+    font-size: 16px;
+    line-height: 1.5;
+  }
+
+  h1, h2, h3, h4 {
+    letter-spacing: -0.02em;
+  }
+
+  .dashboard-shell {
+    background-color: #F7F8F6;
+  }
+
+  .dashboard-shell [class~="bg-[#12181A]"] { background-color: #244C3B !important; }
+  .dashboard-shell [class~="bg-[#1E5128]"] { background-color: #244C3B !important; }
+  .dashboard-shell [class~="bg-[#F0FDF4]"] { background-color: #E8F3E9 !important; }
+  .dashboard-shell [class~="text-[#12181A]"] { color: #17211D !important; }
+  .dashboard-shell [class~="text-[#1E5128]"] { color: #244C3B !important; }
+  .dashboard-shell [class~="text-[#4B5563]"] { color: #617067 !important; }
+  .dashboard-shell [class~="text-[#8A93A0]"] { color: #849188 !important; }
+  .dashboard-shell [class~="border-[#E5E8E6]"] { border-color: #D9E1DB !important; }
+  .dashboard-shell [class~="border-[#1E5128]"] { border-color: #244C3B !important; }
+  .dashboard-shell [class*="hover:bg-[#12181A]"]:hover { background-color: #17352A !important; }
+  .dashboard-shell [class*="hover:bg-[#1E5128]"]:hover { background-color: #17352A !important; }
+  .dashboard-shell [class*="hover:bg-[#F7F8F6]"]:hover { background-color: #FFFFFF !important; }
+  .dashboard-shell [class*="hover:text-[#12181A]"]:hover { color: #17211D !important; }
+  .dashboard-shell [class*="hover:text-[#1E5128]"]:hover { color: #244C3B !important; }
+  .dashboard-shell [class~="bg-slate-50/70"] { background-color: #F7F8F6 !important; }
+  .dashboard-shell [class~="bg-slate-50/50"] { background-color: #F7F8F6 !important; }
+  .dashboard-shell [class~="bg-slate-900"] { background-color: #244C3B !important; }
+  .dashboard-shell [class~="text-slate-900"] { color: #17211D !important; }
+  .dashboard-shell [class~="text-slate-800"] { color: #17211D !important; }
+  .dashboard-shell [class~="text-slate-600"] { color: #617067 !important; }
+  .dashboard-shell [class~="text-slate-500"] { color: #849188 !important; }
+  .dashboard-shell [class~="border-slate-200"] { border-color: #D9E1DB !important; }
+  .dashboard-shell [class~="border-slate-800"] { border-color: #17352A !important; }
+  .dashboard-shell .header-overflow-item { display: none !important; }
+  .dashboard-shell .nav-link { position: relative; color: #617067; font-weight: 600; }
+  .dashboard-shell .nav-link:hover { color: #244C3B; }
+  .dashboard-shell .nav-link[class*="bg-[#12181A]"] { background-color: transparent !important; }
+  .dashboard-shell .nav-link::after { content: ""; position: absolute; left: 0.75rem; right: 0.75rem; bottom: 0; height: 2px; background: transparent; }
+  .dashboard-shell .nav-link[class*="text-white"] { color: #244C3B !important; }
+  .dashboard-shell .nav-link[class*="text-white"]::after { background: #D7F06B; }
+  .dashboard-shell .nav-tools { border: 1px solid #D9E1DB; }
+
+  .font-hindi, .font-marathi {
+    font-family: "Mangal", "Nirmala UI", "Devanagari Sangam MN", "Noto Sans Devanagari", sans-serif;
+  }
+}
+
+/* Strict Type Scale: Base 16px, 1.25 ratio.
+   Line-height: 1.5 for <=16px, 1.15 for >=24px.
+   No text anywhere may render below 13px. */
+.text-xs { font-size: 13px !important; line-height: 1.5 !important; }
+.text-sm { font-size: 14px !important; line-height: 1.5 !important; }
+.text-base { font-size: 16px !important; line-height: 1.5 !important; }
+.text-md { font-size: 18px !important; line-height: 1.5 !important; }
+.text-lg { font-size: 20px !important; line-height: 1.5 !important; }
+.text-xl { font-size: 24px !important; line-height: 1.15 !important; }
+.text-2xl { font-size: 32px !important; line-height: 1.15 !important; }
+.text-3xl { font-size: 40px !important; line-height: 1.15 !important; }
+
+/* Hide scrollbar utility */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Custom styled Range Slider */
+input[type="range"].custom-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 8px;
+  border-radius: 9999px;
+  outline: none;
+  cursor: pointer;
+  margin: 8px 0;
+}
+
+input[type="range"].custom-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #12181A;
+  border: 3px solid #FFFFFF;
+  box-shadow: 0 1px 4px rgba(18, 24, 26, 0.35);
+  cursor: grab;
+  transition: transform 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+input[type="range"].custom-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+  background: #1E5128;
+  box-shadow: 0 2px 8px rgba(30, 81, 40, 0.4);
+}
+
+input[type="range"].custom-slider::-webkit-slider-thumb:active {
+  cursor: grabbing;
+  transform: scale(1.08);
+}
+
+input[type="range"].custom-slider::-moz-range-thumb {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #12181A;
+  border: 3px solid #FFFFFF;
+  box-shadow: 0 1px 4px rgba(18, 24, 26, 0.35);
+  cursor: grab;
+  transition: transform 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+input[type="range"].custom-slider::-moz-range-thumb:hover {
+  transform: scale(1.15);
+  background: #1E5128;
+  box-shadow: 0 2px 8px rgba(30, 81, 40, 0.4);
+}
+
+/* Subtle standard scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #F7F8F6;
+}
+::-webkit-scrollbar-thumb {
+  background: #E5E8E6;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #8A93A0;
+}
+
+@keyframes slideDownToast {
+  from {
+    transform: translateY(-16px) scale(0.97);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+
+.animate-toast-in {
+  animation: slideDownToast 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}

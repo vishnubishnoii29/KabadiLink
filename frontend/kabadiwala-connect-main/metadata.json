@@ -1,0 +1,6 @@
+{
+  "name": "Kabadiwala Connect – Bringing the Informal Collector into the Formal Recycling Chain",
+  "description": "Vernacular, low-literacy, offline-tolerant mobile platform bridging informal scrap collectors with authorized e-waste recyclers under E-Waste Rules 2022 and EPR.",
+  "requestFramePermissions": ["camera", "microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
