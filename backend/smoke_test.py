@@ -294,13 +294,12 @@ class SmokeTest(unittest.TestCase):
         }
         self.assertEqual(expected - registered, set())
 
-    def test_16_inference_reports_unavailable_without_trained_models(self):
-        """Test detect_and_classify() degrades to [] rather than crashing when no ONNX models exist yet."""
-        self.assertFalse(inference_module.models_available())
+    def test_16_inference_degrades_gracefully(self):
+        """Test detect_and_classify() degrades to [] on invalid bytes rather than crashing."""
         self.assertEqual(inference_module.detect_and_classify(b"not-a-real-image"), [])
 
-    def test_17_classify_photo_falls_back_to_rule_based(self):
-        """Test the full pipeline still returns a contract-shaped result with no trained model or Gemini key."""
+    def test_17_classify_photo_pipeline_contract(self):
+        """Test the full pipeline returns a valid contract-shaped result (local_model or rule_based fallback)."""
         import io
         from PIL import Image
         buf = io.BytesIO()
@@ -310,11 +309,10 @@ class SmokeTest(unittest.TestCase):
         detections = classify_photo(image_bytes)
         self.assertEqual(len(detections), 1)
         d = detections[0]
-        self.assertEqual(d["source"], "rule_based")
-        self.assertEqual(d["material"], "OTHER")
+        self.assertIn(d["source"], ("local_model", "rule_based"))
+        self.assertIn(d["material"], inference_module.MATERIAL_CLASSES)
         self.assertIn("reasoning", d)
         self.assertIn("needs_confirmation", d)
-        self.assertTrue(d["needs_confirmation"])  # confidence 0.5 < AI_CONFIDENCE_THRESHOLD 0.70
         self.assertEqual(d["bbox"], [0, 0, 100, 80])
 
     def test_18_ai_vision_falls_back_without_api_key(self):
@@ -341,10 +339,10 @@ class SmokeTest(unittest.TestCase):
         self.assertEqual(len(data), 1)
         item = data[0]
         self.assertIn("result", item)
+        self.assertIn(item["result"], inference_module.MATERIAL_CLASSES)
         self.assertIn("confidence", item)
         self.assertIn("reasoning", item)
         self.assertIn("source", item)
-        self.assertEqual(item["result"], "OTHER")
         self.assertNotIn("material", item)  # AIResult uses "result", not the internal detection key
 
     def test_20_attach_role_scoped_id_collector(self):
@@ -465,7 +463,30 @@ class SmokeTest(unittest.TestCase):
         insert_sql = next(sql for sql in cursor.executed if "INSERT INTO lots" in sql)
         self.assertNotIn("client_uid", insert_sql)
 
+    def test_29_detect_and_classify_stage2_onnx(self):
+        """Test Stage 2 MobileNetV2 ONNX inference runs on dummy image bytes and returns valid contract."""
+        import io
+        from PIL import Image
+        from backend.services.classification import classify_photo
+
+        img = Image.new("RGB", (224, 224), color="blue")
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG")
+        detections = classify_photo(buf.getvalue())
+
+        self.assertIsInstance(detections, list)
+        self.assertGreaterEqual(len(detections), 1)
+        item = detections[0]
+        self.assertIn("material", item)
+        self.assertIn(item["material"], ["PCB", "CABLE", "BATTERY", "LCD", "CRT", "PLASTIC", "OTHER"])
+        self.assertIn("confidence", item)
+        self.assertGreater(item["confidence"], 0.0)
+        self.assertEqual(item["source"], "local_model")
+        self.assertIn("reasoning", item)
+        self.assertIn("needs_confirmation", item)
+
 
 if __name__ == "__main__":
     print("Running KabadiLink Smoke Tests...")
     unittest.main(verbosity=2)
+

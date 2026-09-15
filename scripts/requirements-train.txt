@@ -1,0 +1,8 @@
+# Training-only dependencies for scripts/train_stage2_classifier.py.
+# Not part of backend/requirements.txt — the trained backend only needs onnxruntime.
+#
+# Install with CUDA support (adjust cu124 if your driver needs a different CUDA build):
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
+torch
+torchvision
+onnx

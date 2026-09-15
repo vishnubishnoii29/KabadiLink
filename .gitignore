@@ -39,6 +39,7 @@ dataset/*.zip
 dataset/data/
 dataset/dataset_pc_parts/
 dataset/material_dataset/
+dataset/checkpoints/
 
 # Node / React
 node_modules/

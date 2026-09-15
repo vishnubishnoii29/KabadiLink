@@ -1,0 +1,23 @@
+{
+  "classes": [
+    "BATTERY",
+    "CABLE",
+    "CRT",
+    "LCD",
+    "OTHER",
+    "PCB",
+    "PLASTIC"
+  ],
+  "input_size": 224,
+  "normalize_mean": [
+    0.485,
+    0.456,
+    0.406
+  ],
+  "normalize_std": [
+    0.229,
+    0.224,
+    0.225
+  ],
+  "note": "7 of 9 MATERIAL_CLASSES trained -- MOTOR and MAGNET are known gaps for this pilot."
+}
