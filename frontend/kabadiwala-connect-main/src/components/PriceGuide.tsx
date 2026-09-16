@@ -89,22 +89,48 @@ export const PriceGuide: React.FC<PriceGuideProps> = ({
   const handleEvaluateOfferWithGemini = async () => {
     setIsEvaluating(true);
     try {
-      const response = await fetch("/api/ai/predict-price", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          materialKey: testMaterialKey,
-          weightKg: 25,
-          purity: "high",
-          userOfferedRate: offeredRate,
-        }),
-      });
+      const canonicalCode = testMaterialKey.includes("pcb")
+        ? "PCB"
+        : testMaterialKey.includes("copper") || testMaterialKey.includes("cable") || testMaterialKey.includes("transformer")
+        ? "CABLE"
+        : testMaterialKey.includes("battery")
+        ? "BATTERY"
+        : testMaterialKey.includes("display") || testMaterialKey.includes("phone")
+        ? "LCD"
+        : testMaterialKey.includes("crt")
+        ? "CRT"
+        : testMaterialKey.includes("motor") || testMaterialKey.includes("smps") || testMaterialKey.includes("drive")
+        ? "MOTOR"
+        : testMaterialKey.includes("magnet")
+        ? "MAGNET"
+        : testMaterialKey.includes("plastic")
+        ? "PLASTIC"
+        : "OTHER";
 
-      const data = await response.json();
-      setNegotiationResult(data);
+      // Call real backend AI pricing and anomaly check endpoints
+      const [estimate, anomaly] = await Promise.all([
+        import("../lib/api/ai").then((m) => m.estimatePrice(canonicalCode, 25)),
+        import("../lib/api/ai").then((m) =>
+          m.checkPriceAnomaly({
+            material: canonicalCode,
+            offer_price: offeredRate * 25,
+          })
+        ),
+      ]);
+
+      setNegotiationResult({
+        fairRatePerKg: estimate.median,
+        isFair: anomaly.status === "NORMAL",
+        advice:
+          anomaly.status === "ANOMALOUS"
+            ? `Offer is flagged as ${anomaly.severity} severity anomaly. Rule-based benchmark median is ₹${estimate.median}/kg.`
+            : `Offer is within fair market tolerance (Benchmark median ₹${estimate.median}/kg, range ₹${estimate.min}-₹${estimate.max}).`,
+        source: estimate.source,
+        confidence: estimate.confidence,
+      });
     } catch (err) {
       console.error("AI Price Evaluation Error:", err);
-      // Fallback
+      // Clean rule-based fallback
       setNegotiationResult({
         fairRatePerKg: testMaterial.fairPrice,
         isFair: offeredRate >= testMaterial.fairPrice * 0.9,
@@ -177,7 +203,12 @@ export const PriceGuide: React.FC<PriceGuideProps> = ({
             <h2 className="text-md font-semibold text-[#12181A]">
               Scrap Material Price Directory ({filteredMaterials.length} items)
             </h2>
-            <span className="text-xs text-[#8A93A0] font-mono">Rates in ₹/kg INR</span>
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-semibold text-[#8A5A00] bg-[#FFF9E8] border border-[#E2D4A7] px-2 py-0.5 rounded">
+                7-Day Trend: Illustrative Demo
+              </span>
+              <span className="text-xs text-[#8A93A0] font-mono">Rates in ₹/kg INR</span>
+            </div>
           </div>
 
           <div className="overflow-x-auto">

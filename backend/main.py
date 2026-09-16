@@ -59,19 +59,36 @@ async def http_exception_handler(request: Request, exc: HTTPException):
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    errors = exc.errors()
+    messages = []
+    for err in errors:
+        loc = " -> ".join(str(l) for l in err.get("loc", []) if l != "body")
+        msg = err.get("msg", "Invalid value")
+        messages.append(f"{loc}: {msg}" if loc else msg)
+    summary_message = "; ".join(messages) if messages else "Request validation failed"
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        content={"error": {"code": "VALIDATION_ERROR", "message": str(exc.errors())}}
+        content={"error": {"code": "VALIDATION_ERROR", "message": summary_message, "details": errors}}
     )
+
 
 # Global Exception Handler
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     logger.error(f"Unhandled error processing {request.method} {request.url.path}: {exc}", exc_info=True)
-    return JSONResponse(
+    response = JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={"error": {"code": "INTERNAL_SERVER_ERROR", "message": "An unexpected error occurred."}}
     )
+    # Starlette routes exceptions only caught by this generic handler through
+    # ServerErrorMiddleware, which sits outside CORSMiddleware — so without this,
+    # every unhandled 500 comes back with no CORS headers and browsers surface it
+    # to the frontend as an opaque "Failed to fetch" instead of the real error body.
+    origin = request.headers.get("origin")
+    if origin:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+    return response
 
 # Include Routers
 app.include_router(health.router)

@@ -1,6 +1,8 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { DigitalReceipt, Language } from "../types";
 import { MATERIALS_DATA } from "../data/mockData";
+import { getEprRecord } from "../lib/api/handover";
+import { EprRecord } from "../types/api";
 import {
   Printer,
   Download,
@@ -12,7 +14,11 @@ import {
   Layers,
   Scale,
   Hash,
-  X
+  X,
+  Award,
+  Lock,
+  RefreshCw,
+  FileCheck
 } from "lucide-react";
 
 interface CPCBReportModalProps {
@@ -26,6 +32,40 @@ export const CPCBReportModal: React.FC<CPCBReportModalProps> = ({
   language,
   onClose,
 }) => {
+  const [eprRecords, setEprRecords] = useState<Record<string, EprRecord>>({});
+  const [loadingEpr, setLoadingEpr] = useState<boolean>(false);
+
+  useEffect(() => {
+    let isMounted = true;
+    const fetchEpr = async () => {
+      setLoadingEpr(true);
+      const records: Record<string, EprRecord> = {};
+      for (const r of receipts) {
+        if (r.id) {
+          try {
+            const epr = await getEprRecord(r.id);
+            if (epr && isMounted) {
+              records[r.id] = epr;
+            }
+          } catch {
+            // EPR records require completed status and verified credentials
+          }
+        }
+      }
+      if (isMounted) {
+        setEprRecords(records);
+        setLoadingEpr(false);
+      }
+    };
+
+    if (receipts.length > 0) {
+      fetchEpr();
+    }
+    return () => {
+      isMounted = false;
+    };
+  }, [receipts]);
+
   // 1. Total e-waste diverted from informal backyard burning to formal recyclers (by category)
   const categorySummary: Record<string, { weightKg: number; count: number; totalPaidInr: number; fairBenchmarkInr: number }> = {};
 
@@ -303,11 +343,62 @@ export const CPCBReportModal: React.FC<CPCBReportModalProps> = ({
           </div>
         </div>
 
+        {/* Section: CPCB Extended Producer Responsibility (EPR) Certificate Registry */}
+        <div className="mb-6 p-4 rounded-xl bg-white border border-[#E5E8E6] space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-bold text-[#12181A] uppercase tracking-wider flex items-center gap-2">
+              <Award className="w-4 h-4 text-[#1E5128]" />
+              <span>3. Statutory CPCB EPR Certificate Registry (GET /lots/&#123;id&#125;/epr-record)</span>
+            </h3>
+            <span className="text-[11px] font-mono text-[#8A93A0] uppercase">
+              E-Waste Rules 2022 § 14
+            </span>
+          </div>
+
+          {loadingEpr ? (
+            <div className="py-3 text-center text-xs text-slate-400 flex items-center justify-center gap-2">
+              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+              <span>Retrieving CPCB EPR Certificate records...</span>
+            </div>
+          ) : Object.keys(eprRecords).length === 0 ? (
+            <div className="p-3 rounded-lg bg-[#F7F8F6] text-xs text-slate-600 leading-relaxed border border-[#E5E8E6]">
+              EPR records are issued dynamically upon completion of all 4 CPCB compliance conditions: Handover completed with verified OTP, physical weight scale recorded, authorized recycler credentials, and approved verification docs.
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {(Object.entries(eprRecords) as [string, EprRecord][]).map(([lotId, epr]) => (
+                <div
+                  key={epr.record_id}
+                  className="p-3 rounded-xl bg-[#F0FDF4] border border-[#1E5128]/30 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs"
+                >
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-[#12181A] font-mono">
+                        Certificate #{epr.record_id}
+                      </span>
+                      <span className="bg-[#1E5128] text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase">
+                        CPCB Validated
+                      </span>
+                    </div>
+                    <p className="text-slate-500 text-[11px]">
+                      Lot ID: {lotId} • Material: <strong className="text-slate-700">{epr.material_code}</strong> • Weight: <strong className="text-slate-700">{epr.weight_kg} kg</strong>
+                    </p>
+                  </div>
+                  <div className="text-right sm:text-right text-[11px] text-slate-500 font-mono">
+                    <div>Recycler Auth: {epr.recycler_authorization_id || "CPCB/AUTH/2026"}</div>
+                    <div className="text-emerald-700 font-semibold">Verified: {new Date(epr.handover_verified_at).toLocaleDateString()}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
         {/* Section 4: Verified Transaction List with Manifests & Chain-of-Custody Hashes */}
         <div>
           <h3 className="text-sm font-bold text-[#12181A] uppercase tracking-wider mb-3 flex items-center gap-2">
             <Hash className="w-4 h-4 text-[#1E5128]" />
-            3. Verified Transaction Manifest & Cryptographic Chain-of-Custody Hashes
+            4. Verified Transaction Manifest & Cryptographic Chain-of-Custody Hashes
           </h3>
           <div className="border border-[#E5E8E6] rounded-xl overflow-hidden">
             <table className="w-full text-left text-xs">

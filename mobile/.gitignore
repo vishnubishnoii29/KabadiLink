@@ -46,3 +46,6 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+
+# Gradle wrapper distribution downloads (100+ MB, redownloadable, not source)
+gradle-*.zip

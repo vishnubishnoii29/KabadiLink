@@ -22,7 +22,8 @@ import {
   Wifi,
   WifiOff,
   MoreHorizontal,
-  ChevronDown
+  ChevronDown,
+  LogOut
 } from "lucide-react";
 import { AudioGuideEngine } from "../utils/speech";
 import { NotificationCenter } from "./NotificationCenter";
@@ -211,24 +212,30 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
           </div>
 
-          {/* Login / User Account Badge with 1-Click Role Switch */}
-          <button
-            onClick={onOpenAuthModal}
-            className="min-h-[44px] px-3 py-1.5 bg-[#F7F8F6] hover:bg-white border border-[#E5E8E6] rounded-xl flex items-center gap-2 transition-all cursor-pointer shadow-2xs group text-left"
-            title="Account Profile & Demo Logins"
-          >
-            <div className="w-7 h-7 rounded-lg bg-[#1E5128] text-white flex items-center justify-center font-bold text-xs shrink-0">
-              {persona === "admin" ? "AD" : persona === "recycler" ? "RC" : "KB"}
-            </div>
-            <div className="hidden sm:block">
-              <div className="text-xs font-bold text-[#12181A] group-hover:text-[#1E5128] truncate max-w-[110px]">
-                {currentUser ? currentUser.name : "Login / Demo"}
+          {/* Login / User Account Badge with Explicit Logout */}
+          <div className="flex items-center gap-1.5 bg-[#F7F8F6] border border-[#E5E8E6] rounded-xl p-1 shadow-2xs">
+            <div className="min-h-[38px] px-2.5 py-1 flex items-center gap-2 text-left">
+              <div className="w-7 h-7 rounded-lg bg-[#1E5128] text-white flex items-center justify-center font-bold text-xs shrink-0">
+                {persona === "admin" ? "AD" : persona === "recycler" ? "RC" : "KB"}
               </div>
-              <div className="text-[10px] text-[#8A93A0] uppercase font-semibold">
-                {persona === "admin" ? "CPCB Admin" : persona === "recycler" ? "Recycler" : "Collector"}
+              <div className="hidden sm:block">
+                <div className="text-xs font-bold text-[#12181A] truncate max-w-[110px]">
+                  {currentUser ? currentUser.name : "Session Active"}
+                </div>
+                <div className="text-[10px] text-[#8A93A0] uppercase font-semibold">
+                  {persona === "admin" ? "CPCB Admin" : persona === "recycler" ? "Recycler" : "Collector"}
+                </div>
               </div>
             </div>
-          </button>
+            <button
+              onClick={onOpenAuthModal}
+              className="min-h-[36px] px-2.5 py-1 text-xs font-semibold text-[#8A93A0] hover:text-red-600 hover:bg-white rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+              title="Sign Out / Switch Account"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span className="hidden md:inline">Logout</span>
+            </button>
+          </div>
         </div>
       </div>
 

@@ -6,6 +6,8 @@ import {
   verifyReceiptIntegrity,
   CanonicalReceiptPayload
 } from "../utils/crypto";
+import { getAuditLog } from "../lib/api/admin";
+import { AuditLogEntry } from "../types/api";
 import {
   ShieldCheck,
   ShieldAlert,
@@ -16,7 +18,9 @@ import {
   Code,
   Terminal,
   RefreshCw,
-  AlertTriangle
+  AlertTriangle,
+  Lock,
+  Database
 } from "lucide-react";
 
 interface HashAuditModalProps {
@@ -40,6 +44,18 @@ export const HashAuditModal: React.FC<HashAuditModalProps> = ({
     storedHash: string;
   } | null>(null);
   const [isVerifying, setIsVerifying] = useState<boolean>(false);
+  const [serverLogs, setServerLogs] = useState<AuditLogEntry[]>([]);
+  const [loadingServerLogs, setLoadingServerLogs] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      setLoadingServerLogs(true);
+      getAuditLog()
+        .then((logs) => setServerLogs(logs.slice(0, 4)))
+        .catch((e) => console.warn("Could not load server audit log:", e))
+        .finally(() => setLoadingServerLogs(false));
+    }
+  }, [isOpen]);
 
   const runVerification = async (useTamperedWeight = false) => {
     if (!receipt) return;
@@ -253,6 +269,48 @@ export const HashAuditModal: React.FC<HashAuditModalProps> = ({
                 Tampered Payload ({tamperedWeight} kg)
               </button>
             </div>
+          </div>
+
+          {/* 6. Server-Side Audit Logs (PostgreSQL Immutability Verification) */}
+          <div className="bg-white border border-[#E5E8E6] rounded-xl p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="font-semibold text-[#12181A] flex items-center gap-1.5">
+                <Database className="w-3.5 h-3.5 text-[#1E5128]" />
+                <span>Server-Side Audit Trail (PostgreSQL Audit Log)</span>
+              </span>
+              <span className="text-[10px] font-mono text-[#8A93A0] uppercase">
+                GET /admin/audit-log
+              </span>
+            </div>
+
+            {loadingServerLogs ? (
+              <div className="py-3 text-center text-slate-400 text-xs flex items-center justify-center gap-2">
+                <RefreshCw className="w-3 h-3 animate-spin" />
+                <span>Checking PostgreSQL audit records...</span>
+              </div>
+            ) : serverLogs.length === 0 ? (
+              <div className="py-2 text-[11px] text-slate-500">
+                Connected to audit engine. System audit trail records will display when audit actions are committed.
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {serverLogs.map((log) => (
+                  <div
+                    key={log.id}
+                    className="p-2.5 rounded-lg bg-[#F7F8F6] border border-[#E5E8E6] flex items-center justify-between font-mono text-[11px]"
+                  >
+                    <div className="flex items-center gap-2 truncate">
+                      <Lock className="w-3 h-3 text-[#1E5128] shrink-0" />
+                      <span className="font-bold text-[#12181A]">{log.action}</span>
+                      <span className="text-[#8A93A0]">({log.entity_type} #{log.entity_id.slice(0, 8)})</span>
+                    </div>
+                    <span className="text-[10px] text-slate-500 shrink-0 ml-2">
+                      {new Date(log.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 

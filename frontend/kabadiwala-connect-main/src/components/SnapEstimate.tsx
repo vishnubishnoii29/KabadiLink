@@ -1,8 +1,11 @@
 import React, { useState, useRef, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { MaterialInfo, Language, MaterialAnalysis } from "../types";
 import { MATERIALS_DATA } from "../data/mockData";
 import { formatCurrency, formatWeight } from "../utils/formatters";
 import { queuePendingLotOffline } from "../utils/offlineQueue";
+import { uploadLotPhoto, createLotsFromPhoto, createLotManual } from "../lib/api/lots";
+import { LotPhotoResponse, DetectionItem, Lot } from "../types/api";
 import {
   Camera,
   Upload,
@@ -18,7 +21,9 @@ import {
   AlertCircle,
   WifiOff,
   Database,
-  Check
+  Check,
+  ArrowRight,
+  Layers,
 } from "lucide-react";
 import { AudioGuideEngine } from "../utils/speech";
 
@@ -53,6 +58,7 @@ export const SnapEstimate: React.FC<SnapEstimateProps> = ({
   isSimulatedOffline = false,
   onOpenOfflineQueueModal,
 }) => {
+  const navigate = useNavigate();
   const [selectedMaterial, setSelectedMaterial] = useState<MaterialInfo>(MATERIALS_DATA[0]);
   const [weightKg, setWeightKg] = useState<number>(18);
   const [purityGrade, setPurityGrade] = useState<"high" | "standard" | "mixed">("high");
@@ -61,6 +67,12 @@ export const SnapEstimate: React.FC<SnapEstimateProps> = ({
   const [aiResult, setAiResult] = useState<MaterialAnalysis | null>(null);
   const [cameraActive, setCameraActive] = useState<boolean>(false);
   const [offlineQueuedSuccess, setOfflineQueuedSuccess] = useState<boolean>(false);
+
+  // Real backend lot pipeline state
+  const [lotPhotoResponse, setLotPhotoResponse] = useState<LotPhotoResponse | null>(null);
+  const [createdLot, setCreatedLot] = useState<Lot | null>(null);
+  const [isCreatingLot, setIsCreatingLot] = useState<boolean>(false);
+  const [backendError, setBackendError] = useState<string>("");
 
   const effectiveOnline = isOnline && !isSimulatedOffline;
 
@@ -110,7 +122,15 @@ export const SnapEstimate: React.FC<SnapEstimateProps> = ({
       const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
       setImagePreview(dataUrl);
       stopCamera();
-      runAiAnalysis(dataUrl);
+
+      canvas.toBlob((blob) => {
+        if (blob) {
+          const file = new File([blob], "camera_capture.jpg", { type: "image/jpeg" });
+          runAiAnalysis(dataUrl, file);
+        } else {
+          runAiAnalysis(dataUrl);
+        }
+      }, "image/jpeg", 0.85);
     }
   };
 
@@ -122,13 +142,16 @@ export const SnapEstimate: React.FC<SnapEstimateProps> = ({
     reader.onload = () => {
       const base64 = reader.result as string;
       setImagePreview(base64);
-      runAiAnalysis(base64);
+      runAiAnalysis(base64, file);
     };
     reader.readAsDataURL(file);
   };
 
-  const runAiAnalysis = async (base64Image: string) => {
+  const runAiAnalysis = async (base64Image: string, file?: File) => {
     setIsScanningAI(true);
+    setBackendError("");
+    setCreatedLot(null);
+
     if (!effectiveOnline) {
       setTimeout(() => {
         setIsScanningAI(false);
@@ -144,37 +167,116 @@ export const SnapEstimate: React.FC<SnapEstimateProps> = ({
     }
 
     try {
-      const res = await fetch("/api/ai/detect-material", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          imageBase64: base64Image,
-          userWeightKg: weightKg,
-        }),
-      });
-      const data = await res.json();
-      if (data.analysis) {
-        setAiResult(data.analysis);
-        const matched = MATERIALS_DATA.find((m) => m.key === data.analysis.detectedKey);
-        if (matched) {
-          setSelectedMaterial(matched);
-        }
-        if (data.analysis.estimatedWeightKg && data.analysis.estimatedWeightKg > 0) {
-          setWeightKg(data.analysis.estimatedWeightKg);
-        }
+      if (file) {
+        // Real Backend Photo Upload + Inference Pipeline
+        const photoRes = await uploadLotPhoto(file);
+        setLotPhotoResponse(photoRes);
 
-        if (soundEnabled) {
-          const speechMsg =
-            language === "hi"
-              ? `एआई ने पहचाना: ${data.analysis.title?.hi || "ई-कचरा"}। अनुमानित भाव ₹${data.analysis.estimatedRatePerKg} प्रति किलो।`
-              : `AI identified ${data.analysis.title?.en || "E-Waste"}. Spot rate is ₹${data.analysis.estimatedRatePerKg} per kilogram.`;
-          AudioGuideEngine.speak(speechMsg, language);
+        if (photoRes.detections && photoRes.detections.length > 0) {
+          const topDet = photoRes.detections[0];
+          const matched =
+            MATERIALS_DATA.find((m) =>
+              m.key.toLowerCase().includes(topDet.material.toLowerCase())
+            ) || MATERIALS_DATA[0];
+          setSelectedMaterial(matched);
+
+          setAiResult({
+            detectedKey: matched.key,
+            title: matched.name,
+            grade: purityGrade === "high" ? "High Yield Server Grade" : "Standard Grade",
+            purityPercent: Math.round(topDet.confidence * 100),
+            recoverableMetals: ["Gold (Au)", "Copper (Cu)", "Tin (Sn)"],
+            estimatedRatePerKg: matched.fairPrice,
+            estimatedWeightKg: weightKg,
+            hazardRisk: "MODERATE",
+            safetyWarning: {
+              en: "Wear protective nitrile gloves. Do not burn PCB insulation.",
+              hi: "दस्ताने पहनें। पीसीबी को जलाएं नहीं।",
+              mr: "हातमोजे वापरा. पीसीबी जाळू नका.",
+            },
+            valueMaximizationTip: {
+              en: "Separate gold contact fingers before selling for premium rate.",
+              hi: "गोल्ड कॉन्टैक्ट पिन अलग करके बेचें।",
+              mr: "गोल्ड पिन वेगळे करून विका.",
+            },
+            confidenceScore: topDet.confidence,
+            detectedAt: new Date().toISOString(),
+          });
+        }
+      } else {
+        // Fallback for existing pre-loaded images
+        const res = await fetch("/api/ai/detect-material", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            imageBase64: base64Image,
+            userWeightKg: weightKg,
+          }),
+        });
+        const data = await res.json();
+        if (data.analysis) {
+          setAiResult(data.analysis);
+          const matched = MATERIALS_DATA.find((m) => m.key === data.analysis.detectedKey);
+          if (matched) setSelectedMaterial(matched);
         }
       }
-    } catch (err) {
-      console.error("AI Analysis error:", err);
+    } catch (err: any) {
+      console.warn("Backend inference warning:", err);
+      setBackendError(err.message || "Backend upload failed; using rule-based estimator.");
     } finally {
       setIsScanningAI(false);
+    }
+  };
+
+  const handleCreateBackendLot = async () => {
+    setIsCreatingLot(true);
+    setBackendError("");
+    try {
+      let lot: Lot;
+      const canonicalCode = selectedMaterial.key.includes("pcb")
+        ? "PCB"
+        : selectedMaterial.key.includes("copper") || selectedMaterial.key.includes("cable") || selectedMaterial.key.includes("transformer")
+        ? "CABLE"
+        : selectedMaterial.key.includes("battery")
+        ? "BATTERY"
+        : selectedMaterial.key.includes("display") || selectedMaterial.key.includes("phone")
+        ? "LCD"
+        : selectedMaterial.key.includes("crt")
+        ? "CRT"
+        : selectedMaterial.key.includes("motor") || selectedMaterial.key.includes("smps") || selectedMaterial.key.includes("drive")
+        ? "MOTOR"
+        : selectedMaterial.key.includes("magnet")
+        ? "MAGNET"
+        : selectedMaterial.key.includes("plastic")
+        ? "PLASTIC"
+        : "OTHER";
+
+      if (lotPhotoResponse) {
+        const items = [
+          {
+            bbox_index: 0,
+            weight_kg: weightKg,
+            condition: purityGrade === "high" ? "GRADE_A" : "GRADE_B",
+          },
+        ];
+        const createdLots = await createLotsFromPhoto(lotPhotoResponse.lot_photo_id, "SPLIT", items);
+        lot = createdLots[0];
+      } else {
+        lot = await createLotManual({
+          material_code: canonicalCode,
+          weight_kg: weightKg,
+          condition: purityGrade === "high" ? "GRADE_A" : "GRADE_B",
+        });
+      }
+
+      setCreatedLot(lot);
+      if (soundEnabled) {
+        AudioGuideEngine.speak(`Lot ${lot.lot_code} created successfully on the network.`, language);
+      }
+    } catch (err: any) {
+      setBackendError(err.message || "Failed to create lot in backend. Ensure backend is running.");
+    } finally {
+      setIsCreatingLot(false);
     }
   };
 
@@ -626,8 +728,53 @@ export const SnapEstimate: React.FC<SnapEstimateProps> = ({
             </div>
           )}
 
+          {/* Backend Error Banner if any */}
+          {backendError && (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-3.5 text-xs text-red-700 flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
+              <span>{backendError}</span>
+            </div>
+          )}
+
+          {/* Real Backend Created Lot Confirmation */}
+          {createdLot && (
+            <div className="bg-[#F0FDF4] border border-[#1E5128]/30 rounded-xl p-4 text-xs text-[#17352A] space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-5 h-5 text-[#1E5128]" />
+                  <span className="font-bold text-sm">
+                    Lot Registered: {createdLot.lot_code}
+                  </span>
+                </div>
+                <span className="px-2 py-0.5 rounded bg-white font-bold text-[11px] border border-[#D9E1DB]">
+                  Status: {createdLot.status}
+                </span>
+              </div>
+              <p className="text-[#617067]">
+                Your lot is now live in the central marketplace. Nearby verified recyclers have been matched and can submit procurement bids.
+              </p>
+              <button
+                type="button"
+                onClick={() => navigate(`/app/lots/${createdLot.id || createdLot.lot_id}`)}
+                className="flex items-center justify-center gap-2 w-full min-h-[44px] rounded-xl bg-[#244C3B] text-white font-bold text-xs hover:bg-[#17352A] transition"
+              >
+                <span>View Lot Details, Offers & Recyclers</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
           {/* Action Triggers: 1 Primary (Solid Brand fill, no border), 1 Secondary (1px border, light fill) */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+            <button
+              onClick={handleCreateBackendLot}
+              disabled={isCreatingLot}
+              className="min-h-[44px] bg-[#244C3B] hover:bg-[#17352A] text-white font-semibold py-3 px-6 rounded-xl text-base flex items-center justify-center gap-2 transition-colors cursor-pointer shadow-xs disabled:opacity-50"
+            >
+              <Layers className="w-4 h-4" strokeWidth={1.75} />
+              {isCreatingLot ? "Publishing Lot..." : "Publish Lot to Recyclers"}
+            </button>
+
             <button
               onClick={() =>
                 onStartAuction({
@@ -642,10 +789,12 @@ export const SnapEstimate: React.FC<SnapEstimateProps> = ({
               <TrendingUp className="w-4 h-4" strokeWidth={1.75} />
               Start Live Best-Price Auction
             </button>
+          </div>
 
+          <div className="pt-2">
             <button
               onClick={handleLockDealOrQueueOffline}
-              className={`min-h-[44px] font-semibold py-3 px-6 rounded-xl text-base border flex items-center justify-center gap-2 transition-colors cursor-pointer ${
+              className={`w-full min-h-[44px] font-semibold py-3 px-6 rounded-xl text-sm border flex items-center justify-center gap-2 transition-colors cursor-pointer ${
                 !effectiveOnline
                   ? "bg-[#FFFBEB] hover:bg-[#FEF3C7] text-[#92400E] border-[#FDE68A]"
                   : "bg-white hover:bg-[#F7F8F6] text-[#12181A] border-[#E5E8E6]"
@@ -659,7 +808,7 @@ export const SnapEstimate: React.FC<SnapEstimateProps> = ({
               ) : (
                 <>
                   <FileCheck className="w-4 h-4 text-[#8A93A0]" strokeWidth={1.75} />
-                  <span>Lock Deal Receipt</span>
+                  <span>Lock Deal Receipt (Instant Handover)</span>
                 </>
               )}
             </button>

@@ -77,8 +77,14 @@ export const MicroLoan: React.FC<MicroLoanProps> = ({ language, receipts }) => {
 
   return (
     <div className="max-w-7xl mx-auto px-6 py-8 space-y-8">
-      {/* Top Hero Banner */}
-      <div className="bg-white border border-[#E5E8E6] rounded-2xl p-8 shadow-2xs flex flex-col md:flex-row items-start md:items-center justify-between gap-6 text-[#12181A]">
+      {/* Prototype Status Banner */}
+      <div className="rounded-xl border border-[#E2D4A7] bg-[#FFF9E8] p-3.5 text-xs font-bold text-[#8A5A00] flex items-center justify-between">
+        <span>PROTOTYPE DEMO: Micro-credit scoring and advance cash features are illustrative simulations.</span>
+        <span className="rounded bg-[#8A5A00] text-white px-2 py-0.5 text-[10px] uppercase font-mono">Coming Soon</span>
+      </div>
+
+      {/* Top Value Banner */}
+      <div className="bg-white border border-[#E5E8E6] rounded-2xl p-8 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-6 text-[#12181A]">
         <div>
           <div className="flex items-center gap-2 mb-2">
             <span className="bg-[#F0FDF4] text-[#1E5128] text-xs px-2.5 py-1 rounded-md font-semibold border border-[#1E5128]/20 flex items-center gap-1.5">

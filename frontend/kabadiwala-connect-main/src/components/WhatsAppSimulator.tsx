@@ -18,6 +18,7 @@ import {
   RefreshCw
 } from "lucide-react";
 import { AudioGuideEngine } from "../utils/speech";
+import { BASE_URL } from "../lib/api/client";
 
 interface WhatsAppSimulatorProps {
   language: Language;
@@ -59,19 +60,45 @@ export const WhatsAppSimulator: React.FC<WhatsAppSimulatorProps> = ({ language }
     setIsLoading(true);
 
     try {
-      const response = await fetch("/api/ai/whatsapp-chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: userText,
-          conversationHistory: messages.slice(-8),
-          imageBase64,
-          language,
-        }),
-      });
+      let botReply = "";
+      const cleanBase64 = imageBase64 ? imageBase64.replace(/^data:image\/[a-z]+;base64,/, "") : null;
 
-      const data = await response.json();
-      const botReply = data.reply || "Namaste! Please reply 1 for live auction, 2 for free truck pickup.";
+      // 1. Try real FastAPI backend /whatsapp/simulate
+      try {
+        const response = await fetch(`${BASE_URL}/whatsapp/simulate`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            phone: "919876543210",
+            text: userText,
+            image_base64: cleanBase64,
+          }),
+        });
+        if (response.ok) {
+          const data = await response.json();
+          if (data && data.reply) {
+            botReply = data.reply;
+          }
+        }
+      } catch (backendError) {
+        console.warn("FastAPI /whatsapp/simulate not reachable, falling back to Express:", backendError);
+      }
+
+      // 2. Fallback to Express /api/ai/whatsapp-chat if backend is offline or gave empty reply
+      if (!botReply) {
+        const response = await fetch("/api/ai/whatsapp-chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            message: userText,
+            conversationHistory: messages.slice(-8),
+            imageBase64,
+            language,
+          }),
+        });
+        const data = await response.json();
+        botReply = data.reply || "Namaste! Please reply 1 for live auction, 2 for free truck pickup.";
+      }
 
       setMessages((prev) => [
         ...prev,
@@ -163,6 +190,9 @@ export const WhatsAppSimulator: React.FC<WhatsAppSimulatorProps> = ({ language }
             <span className="w-2.5 h-2.5 rounded-full bg-[#1E5128] animate-pulse" />
             <span className="text-xs font-mono uppercase tracking-wider text-[#1E5128] font-semibold">
               Gemini WhatsApp E-Waste Assistant
+            </span>
+            <span className="bg-[#FFF9E8] text-[#8A5A00] border border-[#E2D4A7] text-[11px] px-2.5 py-0.5 rounded-full font-semibold">
+              Prototype / Simulation
             </span>
           </div>
           <h2 className="text-2xl font-bold tracking-tight text-[#12181A]">

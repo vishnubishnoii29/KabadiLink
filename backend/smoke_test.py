@@ -11,7 +11,8 @@ from backend.auth import (
     get_password_hash,
     verify_password,
     create_access_token,
-    generate_otp_code
+    generate_otp_code,
+    get_current_user,
 )
 from backend.helpers import next_lot_id
 from backend.services.matching import haversine_km
@@ -329,11 +330,15 @@ class SmokeTest(unittest.TestCase):
         Image.new("RGB", (60, 40), color=(5, 5, 5)).save(buf, format="JPEG")
 
         token = create_access_token({"sub": "123e4567-e89b-12d3-a456-426614174000", "role": "COLLECTOR", "phone": "9876543210"})
-        res = self.client.post(
-            "/ai/classify-material",
-            files={"photo": ("test.jpg", buf.getvalue(), "image/jpeg")},
-            headers={"Authorization": f"Bearer {token}"},
-        )
+        app.dependency_overrides[get_current_user] = lambda: {"id": "123e4567-e89b-12d3-a456-426614174000", "role": "COLLECTOR", "phone": "9876543210"}
+        try:
+            res = self.client.post(
+                "/ai/classify-material",
+                files={"photo": ("test.jpg", buf.getvalue(), "image/jpeg")},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        finally:
+            app.dependency_overrides.pop(get_current_user, None)
         self.assertEqual(res.status_code, 200)
         data = res.json()
         self.assertEqual(len(data), 1)
