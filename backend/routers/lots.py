@@ -101,7 +101,7 @@ def create_lots_from_photo(payload: FromPhotoRequest, current_user: dict = Depen
     return [{**lot, "lot_id": lot["id"]} for lot in lots]
 
 
-@router.post("/lots")
+@router.post("/lots", status_code=201)
 def create_lot_manual(payload: ManualLotRequest, current_user: dict = Depends(get_current_user)):
     with get_db_connection() as conn:
         collector_id = _collector_id_for_user(conn, current_user["id"])
@@ -154,7 +154,7 @@ def list_pickup_groups(recycler_id: Optional[str] = None, current_user: dict = D
         return lots_service.list_pickup_groups(conn, recycler_id)
 
 
-@router.post("/pickup-groups")
+@router.post("/pickup-groups", status_code=201)
 def create_pickup_group(payload: PickupGroupRequest, current_user: dict = Depends(get_current_user)):
     with get_db_connection() as conn:
         with conn.cursor() as cur:

@@ -310,7 +310,7 @@ def delete_lot(conn: Any, lot_id: str, acting_user_id: str) -> None:
 def create_pickup_group(conn: Any, recycler_id: str, acting_user_id: str, lot_ids: List[str]) -> Dict[str, Any]:
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT id, latitude, longitude FROM lots WHERE id = ANY(%s);",
+            "SELECT id, latitude, longitude FROM lots WHERE id = ANY(%s::uuid[]);",
             (lot_ids,),
         )
         lots = cur.fetchall()
@@ -337,7 +337,7 @@ def create_pickup_group(conn: Any, recycler_id: str, acting_user_id: str, lot_id
         cur.execute(
             """
             INSERT INTO pickup_groups (recycler_id, lot_ids, route_order_json, status)
-            VALUES (%s, %s, %s, 'PLANNED')
+            VALUES (%s, %s::uuid[], %s, 'PLANNED')
             RETURNING *;
             """,
             (recycler_id, lot_ids, json.dumps(route)),

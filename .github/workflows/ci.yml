@@ -12,3 +12,5 @@ jobs:
           python-version: '3.12'
       - run: pip install -r backend/requirements.txt
       - run: python backend/smoke_test.py
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}

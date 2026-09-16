@@ -41,7 +41,7 @@ def recyclers_for_lot(lot_id: str, current_user: dict = Depends(get_current_user
         return offers_service.get_recyclers_for_lot(conn, lot_id)
 
 
-@router.post("/lots/{lot_id}/offers")
+@router.post("/lots/{lot_id}/offers", status_code=201)
 def create_offer(lot_id: str, payload: OfferRequest, current_user: dict = Depends(get_current_user)):
     with get_db_connection() as conn:
         recycler_id = _recycler_id_for_user(conn, current_user["id"])

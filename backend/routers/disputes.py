@@ -23,7 +23,7 @@ class ResolveDisputeRequest(BaseModel):
     status: Literal["RESOLVED", "DISMISSED"]
 
 
-@router.post("/lots/{lot_id}/disputes")
+@router.post("/lots/{lot_id}/disputes", status_code=201)
 def create_dispute(lot_id: str, payload: DisputeRequest, current_user: dict = Depends(get_current_user)):
     with get_db_connection() as conn:
         return disputes_service.create_dispute(
