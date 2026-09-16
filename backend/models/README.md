@@ -38,6 +38,8 @@ magnet will be forced into whichever of the 7 trained classes looks closest, lik
 confidence, which correctly triggers the existing `needs_confirmation` UX path in
 `services/classification.py` rather than silently misreporting the material.
 
-Files placed here are git-ignored (see `.gitignore`) — they're large binaries that don't belong
-in version control; deploy them alongside the backend some other way (build artifact, object
-storage, Git LFS).
+`stage2_classifier.onnx` is committed directly (~9MB, well within git's comfortable range) so
+it's present on every checkout, including CI and Render — no separate distribution step needed.
+`stage1_detector.onnx` (once trained) should be committed the same way unless it turns out to be
+much larger, in which case revisit Git LFS or object storage. `.tflite` exports remain
+git-ignored since they don't exist yet (see "Framework deviation" above).

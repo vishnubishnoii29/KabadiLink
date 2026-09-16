@@ -30,8 +30,8 @@ env/
 uploads/
 *.log
 
-# Trained model artifacts (large binaries — see backend/models/README.md)
-backend/models/*.onnx
+# Trained TFLite artifacts (large binaries, not yet produced — see backend/models/README.md).
+# ONNX files ARE committed: they're small (~9MB) and Render/CI need them present on checkout.
 backend/models/*.tflite
 
 # Raw/derived ML training images (large binaries — see 03-ai-ml-pipeline.md)
